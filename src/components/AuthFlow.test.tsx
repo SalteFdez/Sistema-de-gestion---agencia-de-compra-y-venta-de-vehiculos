@@ -132,4 +132,39 @@ describe('AuthFlow UI Integration', () => {
 
     expect(screen.queryByText(/hola, agustín fernandez/i)).not.toBeInTheDocument();
   });
+
+  it('permite acceder a "Cambiar PIN" desde la pantalla principal y volver', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+      />
+    );
+
+    // En la pantalla principal vemos "Hola, Agustín Fernandez" y el botón "Cambiar PIN"
+    expect(screen.getByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+    const changePinBtn = screen.getByRole('button', { name: /cambiar pin/i });
+    expect(changePinBtn).toBeInTheDocument();
+
+    // Al tocar "Cambiar PIN", se abre ChangePinFlow
+    fireEvent.click(changePinBtn);
+    expect(screen.getByText(/ingresá tu pin actual/i)).toBeInTheDocument();
+
+    // Si cancela, vuelve a la pantalla principal
+    const cancelBtn = screen.getByRole('button', { name: /cancelar/i });
+    fireEvent.click(cancelBtn);
+    expect(screen.getByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+  });
 });

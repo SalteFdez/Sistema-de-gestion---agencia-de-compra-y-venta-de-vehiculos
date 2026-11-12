@@ -3,6 +3,7 @@ import type { DeviceAuthService, LinkedUser } from '../lib/auth/device-auth';
 import type { PinLockout, LockoutStatus } from '../lib/auth/pin-lockout';
 import type { SessionInactivityTracker } from '../lib/auth/session-inactivity';
 import { PinKeypad } from './PinKeypad';
+import { ChangePinFlow } from './ChangePinFlow';
 
 export interface AuthFlowProps {
   authService: DeviceAuthService;
@@ -20,6 +21,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => inactivity.isUnlocked());
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
+  const [isChangingPin, setIsChangingPin] = useState<boolean>(false);
 
   // Formulario de vinculación
   const [email, setEmail] = useState('');
@@ -154,8 +156,23 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     }
   };
 
-  // PANTALLA 1: Desbloqueado -> Pantalla Principal
+  // PANTALLA 1: Desbloqueado -> Pantalla Principal (o cambiar PIN)
   if (isLinked && isUnlocked && linkedUser) {
+    if (isChangingPin) {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
+            <ChangePinFlow
+              authService={authService}
+              lockout={lockout}
+              onDone={() => setIsChangingPin(false)}
+              onCancel={() => setIsChangingPin(false)}
+            />
+          </div>
+        </main>
+      );
+    }
+
     return (
       <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-between p-6">
         <header className="w-full max-w-md flex justify-between items-center py-4">
@@ -173,7 +190,21 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           <h1 className="text-3xl font-extrabold text-gray-900 mb-2">
             Hola, {linkedUser.nombre}
           </h1>
-          <p className="text-gray-600">Dispositivo vinculado correctamente.</p>
+          <p className="text-gray-600 mb-6">Dispositivo vinculado correctamente.</p>
+
+          {/* Configuración provisoria con opción Cambiar PIN */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 max-w-xs mx-auto shadow-sm">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Configuración
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsChangingPin(true)}
+              className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg text-sm transition-colors"
+            >
+              Cambiar PIN
+            </button>
+          </div>
         </section>
 
         <footer className="w-full max-w-md text-center py-4">

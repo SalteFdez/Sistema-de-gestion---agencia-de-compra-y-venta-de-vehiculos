@@ -25,6 +25,17 @@ export interface LinkDeviceResult {
   user?: LinkedUser;
 }
 
+export interface ChangePinParams {
+  currentPin: string;
+  newPin: string;
+  confirmNewPin: string;
+}
+
+export interface ChangePinResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface SupabaseAuthClient {
   signInWithPassword: (credentials: { email: string; password: string }) => Promise<{
     data: { user: { id: string; email?: string } | null };
@@ -115,6 +126,47 @@ export class DeviceAuthService {
     const data = this.getStoredData();
     if (!data) return false;
     return verifyPin(pin, data.salt, data.pinHash);
+  }
+
+  async changePin(params: ChangePinParams): Promise<ChangePinResult> {
+    const { currentPin, newPin, confirmNewPin } = params;
+
+    const stored = this.getStoredData();
+    if (!stored) {
+      return { success: false, error: 'Dispositivo no vinculado' };
+    }
+
+    // 1. Validar PIN actual
+    const isCurrentValid = await verifyPin(currentPin, stored.salt, stored.pinHash);
+    if (!isCurrentValid) {
+      return { success: false, error: 'PIN actual incorrecto' };
+    }
+
+    // 2. Validar formato de nuevo PIN
+    if (!/^\d{4}$/.test(newPin) || !/^\d{4}$/.test(confirmNewPin)) {
+      return { success: false, error: 'El nuevo PIN debe tener exactamente 4 dígitos' };
+    }
+
+    // 3. Validar coincidencia
+    if (newPin !== confirmNewPin) {
+      return { success: false, error: 'Los nuevos PINes no coinciden' };
+    }
+
+    // 4. Generar nueva sal y nuevo hash
+    const newSalt = generateSalt();
+    const newPinHash = await hashPin(newPin, newSalt);
+
+    const updated: StoredDeviceAuth = {
+      salt: newSalt,
+      pinHash: newPinHash,
+      user: stored.user,
+    };
+
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(this.storageKey, JSON.stringify(updated));
+    }
+
+    return { success: true };
   }
 
   async unlinkDevice(): Promise<void> {

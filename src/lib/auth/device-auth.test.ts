@@ -144,4 +144,92 @@ describe('DeviceAuthService', () => {
     expect(service.getLinkedUser()).toBeNull();
     expect(mockSupabase.signOut).toHaveBeenCalled();
   });
+
+  describe('changePin', () => {
+    beforeEach(async () => {
+      mockSupabase.signInWithPassword = vi.fn().mockResolvedValue({
+        error: null,
+        data: { user: { id: 'user-uuid-1', email: 'agustin@machoman.local' } },
+      });
+      mockSupabase.getUserProfile = vi.fn().mockResolvedValue({
+        id: 'user-uuid-1',
+        nombre: 'Agustín Fernandez',
+      });
+    });
+
+    it('falla si el PIN actual es incorrecto y no cambia el PIN', async () => {
+      const service = new DeviceAuthService(mockSupabase);
+      await service.linkDevice({
+        email: 'agustin@machoman.local',
+        password: 'validPassword123',
+        pin: '1234',
+        confirmPin: '1234',
+      });
+
+      const result = await service.changePin({
+        currentPin: '9999',
+        newPin: '5678',
+        confirmNewPin: '5678',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/pin actual incorrecto/i);
+      // El PIN viejo sigue siendo el válido
+      expect(await service.validatePin('1234')).toBe(true);
+      expect(await service.validatePin('5678')).toBe(false);
+    });
+
+    it('falla si los nuevos PINs no coinciden o no tienen 4 dígitos', async () => {
+      const service = new DeviceAuthService(mockSupabase);
+      await service.linkDevice({
+        email: 'agustin@machoman.local',
+        password: 'validPassword123',
+        pin: '1234',
+        confirmPin: '1234',
+      });
+
+      const mismatch = await service.changePin({
+        currentPin: '1234',
+        newPin: '5678',
+        confirmNewPin: '9999',
+      });
+      expect(mismatch.success).toBe(false);
+      expect(mismatch.error).toMatch(/no coinciden/i);
+
+      const invalidLength = await service.changePin({
+        currentPin: '1234',
+        newPin: '56',
+        confirmNewPin: '56',
+      });
+      expect(invalidLength.success).toBe(false);
+      expect(invalidLength.error).toMatch(/4 dígitos/i);
+
+      // El PIN viejo sigue intacto
+      expect(await service.validatePin('1234')).toBe(true);
+    });
+
+    it('cambia el PIN con éxito: genera nueva sal/hash y a partir de ahí solo valida el nuevo', async () => {
+      const service = new DeviceAuthService(mockSupabase);
+      await service.linkDevice({
+        email: 'agustin@machoman.local',
+        password: 'validPassword123',
+        pin: '1234',
+        confirmPin: '1234',
+      });
+
+      const result = await service.changePin({
+        currentPin: '1234',
+        newPin: '5678',
+        confirmNewPin: '5678',
+      });
+
+      expect(result.success).toBe(true);
+      // El viejo ya no sirve
+      expect(await service.validatePin('1234')).toBe(false);
+      // El nuevo es el válido
+      expect(await service.validatePin('5678')).toBe(true);
+      // El usuario sigue siendo el mismo vinculado
+      expect(service.getLinkedUser()?.nombre).toBe('Agustín Fernandez');
+    });
+  });
 });
