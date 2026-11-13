@@ -45,7 +45,7 @@ describe('DeviceAuthService', () => {
     expect(result.error).toMatch(/4 dígitos/i);
   });
 
-  it('falla si las credenciales de Supabase son incorrectas', async () => {
+  it('falla si las credenciales de Supabase son incorrectas (invalid_credentials)', async () => {
     mockSupabase.signInWithPassword = vi.fn().mockResolvedValue({
       error: new Error('Invalid login credentials'),
       data: { user: null },
@@ -60,8 +60,21 @@ describe('DeviceAuthService', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/credenciales incorrectas/i);
+    expect(result.error).toBe('Email o contraseña incorrectos');
     expect(service.isDeviceLinked()).toBe(false);
+  });
+
+  it('distingue error de red o servidor al validar credenciales y avisa revisar conexión', async () => {
+    mockSupabase.signInWithPassword = vi.fn().mockResolvedValue({
+      error: new Error('Failed to fetch'),
+      data: { user: null },
+    });
+
+    const service = new DeviceAuthService(mockSupabase);
+    const result = await service.validateCredentials('agustin@machoman.local', 'cualquiera');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.');
   });
 
   it('vincula exitosamente guardando el hash del PIN (nunca en plano) y datos del socio', async () => {

@@ -5,6 +5,7 @@ import { formatMoney } from '../lib/format/money';
 export interface BalancesViewProps {
   totalDisponible: number;
   cuentas: CuentaItem[];
+  inventario?: { total: number; cantidad: number };
   onVolver: () => void;
   onIrACuentas: () => void;
 }
@@ -12,6 +13,7 @@ export interface BalancesViewProps {
 export const BalancesView: React.FC<BalancesViewProps> = ({
   totalDisponible,
   cuentas,
+  inventario = { total: 0, cantidad: 0 },
   onVolver,
   onIrACuentas,
 }) => {
@@ -41,6 +43,16 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
           {formatMoney(totalDisponible)}
         </div>
         <p className="text-xs text-gray-500">Total en efectivo, bancos y billeteras</p>
+      </section>
+
+      {/* Card Inventario: costo de los vehículos en stock (no toca el dinero disponible) */}
+      <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-6">
+        <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">
+          Inventario
+        </span>
+        <div className="text-lg font-bold text-gray-900 mt-1">
+          {`${formatMoney(inventario.total)} · ${inventario.cantidad} ${inventario.cantidad === 1 ? 'vehículo' : 'vehículos'}`}
+        </div>
       </section>
 
       {/* Detalle por cuenta */}

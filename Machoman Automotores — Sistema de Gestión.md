@@ -193,7 +193,7 @@ Convenciones: claves `id uuid`, montos `bigint` en ARS, todas las tablas de oper
 
 **`movimientos`** — libro único del dinero real
 - `id`, `fecha`, `cuenta_id`, `monto` (con signo: positivo entra, negativo sale)
-- `tipo`: `saldo_inicial` | `compra_vehiculo` | `sena` | `venta` | `cobro_cuota` | `gasto` | `ingreso_general` | `transferencia` | `aporte_socio` | `retiro_socio`
+- `tipo` (nombres oficiales, iguales a la base): `saldo_inicial` | `compra` | `venta_cobro` | `cuota_cobro` | `gasto` | `ingreso_otro` | `transferencia_salida` | `transferencia_entrada` | `aporte_socio` | `retiro_socio`. El tipo `sena` se agrega con una migración cuando se implemente la seña (Etapa 2).
 - Referencias opcionales: `vehiculo_id`, `venta_id`, `cuota_id`, `gasto_id`, `categoria_id`, `socio_id` (para aportes/retiros), `transferencia_id` (agrupa las dos patas de una transferencia)
 - `descripcion`
 - `anulado` (bool), `anulado_por`, `anulado_at`, `motivo_anulacion`
@@ -212,7 +212,7 @@ Convenciones: claves `id uuid`, montos `bigint` en ARS, todas las tablas de oper
 
 **`cuotas`**
 - `id`, `financiacion_id`, `numero`, `monto`, `fecha_vencimiento`
-- El monto cobrado se calcula desde los movimientos `cobro_cuota` (admite **cobros parciales**). Estado derivado: `pendiente` | `parcial` | `cobrada` | `vencida` (vencimiento pasado y no cobrada del todo).
+- El monto cobrado se calcula desde los movimientos `cuota_cobro` (admite **cobros parciales**). Estado derivado: `pendiente` | `parcial` | `cobrada` | `vencida` (vencimiento pasado y no cobrada del todo).
 
 **`gastos`**
 - `id`, `fecha`, `monto_total`, `categoria_id`, `descripcion`, `proveedor_id` (opcional), `alcance` (`general` | `vehiculos`), `anulado`, `created_by`, `created_at`
@@ -244,10 +244,10 @@ Convenciones: claves `id uuid`, montos `bigint` en ARS, todas las tablas de oper
 | `registrar_compra` | Crea el vehículo (código nuevo) + movimiento de salida desde la cuenta elegida. |
 | `registrar_sena` | Movimiento `sena` ligado al vehículo + vehículo pasa a `reservado`. |
 | `registrar_venta` | Venta + movimientos de cobro (una o más cuentas) + liga la seña previa + permutas (alta de vehículos) + financiación y cuotas. Valida que los componentes sumen el precio. Vehículo pasa a `vendido`. |
-| `cobrar_cuota` | Movimiento `cobro_cuota` (total o parcial) en la cuenta elegida. |
+| `cobrar_cuota` | Movimiento `cuota_cobro` (total o parcial) en la cuenta elegida. |
 | `registrar_gasto` | Gasto + movimiento de salida + asignaciones (opcionales). |
 | `asignar_gasto` | Agrega asignaciones a un gasto existente, validando que no superen el total. |
-| `transferir` | Dos movimientos (−origen, +destino) con el mismo `transferencia_id`. |
+| `transferir` | Dos movimientos (`transferencia_salida` en origen, `transferencia_entrada` en destino) con el mismo `transferencia_id`. |
 | `anular_movimiento` / `anular_venta` / `anular_gasto` | Marcan como anulado lo que corresponda, con quién y por qué. Anular una venta devuelve el vehículo a `en_stock` y anula sus movimientos, permutas y cuotas. |
 
 ## 9. Diseño de la interfaz

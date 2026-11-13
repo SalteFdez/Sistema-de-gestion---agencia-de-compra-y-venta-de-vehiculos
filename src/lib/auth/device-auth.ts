@@ -92,7 +92,20 @@ export class DeviceAuthService {
     // Login en Supabase
     const { data, error } = await this.supabase.signInWithPassword({ email, password });
     if (error || !data.user) {
-      return { success: false, error: 'Credenciales incorrectas' };
+      const errorMsg = error?.message?.toLowerCase() || '';
+      const isNetworkError =
+        errorMsg.includes('fetch') ||
+        errorMsg.includes('network') ||
+        errorMsg.includes('connect') ||
+        errorMsg.includes('timeout') ||
+        errorMsg.includes('50');
+
+      return {
+        success: false,
+        error: isNetworkError
+          ? 'No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.'
+          : 'Email o contraseña incorrectos',
+      };
     }
 
     // Perfil del socio
@@ -183,7 +196,20 @@ export class DeviceAuthService {
   }> {
     const { data, error } = await this.supabase.signInWithPassword({ email, password });
     if (error || !data.user) {
-      return { success: false, error: 'Email o contraseña incorrectos' };
+      const errorMsg = error?.message?.toLowerCase() || '';
+      const isNetworkError =
+        errorMsg.includes('fetch') ||
+        errorMsg.includes('network') ||
+        errorMsg.includes('connect') ||
+        errorMsg.includes('timeout') ||
+        errorMsg.includes('50');
+
+      return {
+        success: false,
+        error: isNetworkError
+          ? 'No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.'
+          : 'Email o contraseña incorrectos',
+      };
     }
 
     const profile = await this.supabase.getUserProfile(data.user.id);

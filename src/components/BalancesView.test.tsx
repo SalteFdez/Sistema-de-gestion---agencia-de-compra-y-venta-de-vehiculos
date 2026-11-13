@@ -57,4 +57,19 @@ describe('BalancesView', () => {
     expect(screen.getByText('Banco Galicia')).toBeInTheDocument();
     expect(screen.getByText('$ 1.000.000')).toBeInTheDocument();
   });
+
+  it('muestra Inventario con la suma de costos y la cantidad de vehículos en stock', () => {
+    render(
+      <BalancesView
+        totalDisponible={0}
+        cuentas={[]}
+        inventario={{ total: 12500000, cantidad: 3 }}
+        onVolver={() => {}}
+        onIrACuentas={() => {}}
+      />
+    );
+
+    expect(screen.getByText(/inventario/i)).toBeInTheDocument();
+    expect(screen.getByText('$ 12.500.000 · 3 vehículos')).toBeInTheDocument();
+  });
 });

@@ -6,6 +6,8 @@ import { PinKeypad } from './PinKeypad';
 import { ChangePinFlow } from './ChangePinFlow';
 import { BalancesView } from './BalancesView';
 import { CuentasView } from './CuentasView';
+import { VehiculosView } from './VehiculosView';
+import type { VehiculosService, VehiculoItem } from '../lib/vehiculos/vehiculos-service';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
 
 export interface AuthFlowProps {
@@ -13,6 +15,7 @@ export interface AuthFlowProps {
   lockout: PinLockout;
   inactivity: SessionInactivityTracker;
   cuentasService?: CuentasService;
+  vehiculosService?: VehiculosService;
 }
 
 export const AuthFlow: React.FC<AuthFlowProps> = ({
@@ -20,15 +23,24 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   lockout,
   inactivity,
   cuentasService,
+  vehiculosService,
 }) => {
   const [isLinked, setIsLinked] = useState<boolean>(() => authService.isDeviceLinked());
   const [linkedUser, setLinkedUser] = useState<LinkedUser | null>(() => authService.getLinkedUser());
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => inactivity.isUnlocked());
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<'home' | 'balances' | 'cuentas' | 'change_pin'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos'>('home');
   const [cuentas, setCuentas] = useState<CuentaItem[]>([]);
   const [totalDisponible, setTotalDisponible] = useState<number>(0);
+  const [vehiculos, setVehiculos] = useState<VehiculoItem[]>([]);
+  const [inventario, setInventario] = useState<{ total: number; cantidad: number }>({ total: 0, cantidad: 0 });
+
+  const loadVehiculosData = useCallback(async () => {
+    if (!vehiculosService) return;
+    const lista = await vehiculosService.listarVehiculos();
+    setVehiculos(lista);
+  }, [vehiculosService]);
 
   // Formulario de vinculación
   const [email, setEmail] = useState('');
@@ -57,16 +69,18 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const loadCuentasData = useCallback(async () => {
     if (!cuentasService || !isUnlocked) return;
     try {
-      const [list, total] = await Promise.all([
+      const [list, total, inv] = await Promise.all([
         cuentasService.obtenerCuentasConSaldo(),
         cuentasService.obtenerDineroDisponible(),
+        vehiculosService ? vehiculosService.obtenerInventario() : Promise.resolve(null),
       ]);
       setCuentas(list);
       setTotalDisponible(total);
+      if (inv) setInventario(inv);
     } catch {
       // Ignorar errores transitorios
     }
-  }, [cuentasService, isUnlocked]);
+  }, [cuentasService, vehiculosService, isUnlocked]);
 
   useEffect(() => {
     if (isUnlocked) {
@@ -222,12 +236,33 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
+    if (currentView === 'vehiculos') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <VehiculosView
+            vehiculos={vehiculos}
+            onVolver={() => setCurrentView('home')}
+            onCargarStock={
+              vehiculosService
+                ? async (params) => {
+                    const res = await vehiculosService.cargarStock(params);
+                    if (res.success) await loadVehiculosData();
+                    return res;
+                  }
+                : undefined
+            }
+          />
+        </main>
+      );
+    }
+
     if (currentView === 'balances') {
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <BalancesView
             totalDisponible={totalDisponible}
             cuentas={cuentas}
+            inventario={inventario}
             onVolver={() => setCurrentView('home')}
             onIrACuentas={() => setCurrentView('cuentas')}
           />
@@ -281,6 +316,20 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <span>Balances</span>
+            </button>
+          </div>
+
+          {/* Botón grande Vehículos */}
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                loadVehiculosData();
+                setCurrentView('vehiculos');
+              }}
+              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+            >
+              <span>Vehículos</span>
             </button>
           </div>
 
