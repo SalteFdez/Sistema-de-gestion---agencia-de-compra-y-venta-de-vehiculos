@@ -46,6 +46,65 @@ describe('AuthFlow UI Integration', () => {
     expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument();
   });
 
+  it('valida credenciales al enviar el formulario: si fallan se queda en creds con mensaje de error y conserva el email', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(false),
+      getLinkedUser: vi.fn().mockReturnValue(null),
+      validateCredentials: vi.fn().mockResolvedValue({
+        success: false,
+        error: 'Email o contraseña incorrectos',
+      }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+      />
+    );
+
+    const emailInput = screen.getByLabelText(/email del socio/i);
+    const passInput = screen.getByLabelText(/contraseña/i);
+
+    fireEvent.change(emailInput, { target: { value: 'agustin@machoman.local' } });
+    fireEvent.change(passInput, { target: { value: 'wrongpass' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /continuar a elegir pin/i }));
+
+    expect(await screen.findByText(/email o contraseña incorrectos/i)).toBeInTheDocument();
+    // Permanece en el formulario de creds y conserva el email
+    expect(screen.getByLabelText(/email del socio/i)).toHaveValue('agustin@machoman.local');
+    expect(screen.queryByText(/elegí tu pin de 4 dígitos/i)).not.toBeInTheDocument();
+  });
+
+  it('si las credenciales son válidas, pasa a elegir PIN', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(false),
+      getLinkedUser: vi.fn().mockReturnValue(null),
+      validateCredentials: vi.fn().mockResolvedValue({
+        success: true,
+        user: { id: 'u1', email: 'agustin@machoman.local', nombre: 'Agustín Fernandez' },
+      }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/email del socio/i), { target: { value: 'agustin@machoman.local' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'correctpass' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /continuar a elegir pin/i }));
+
+    expect(await screen.findByText(/elegí tu pin de 4 dígitos/i)).toBeInTheDocument();
+    expect(screen.queryByText(/email o contraseña incorrectos/i)).not.toBeInTheDocument();
+  });
+
   it('muestra la pantalla de ingreso de PIN si el dispositivo está vinculado pero bloqueado', () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),

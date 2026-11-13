@@ -142,14 +142,27 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   };
 
   // Flujo de vinculación: paso a elegir PIN
-  const handleCredsSubmit = (e: React.FormEvent) => {
+  const [validatedUser, setValidatedUser] = useState<LinkedUser | null>(null);
+
+  const handleCredsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) {
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) {
       setLinkError('Ingresá el email y la contraseña');
       return;
     }
     setLinkError(null);
-    setLinkingStep('choose_pin');
+    setIsLinkingLoading(true);
+
+    const res = await authService.validateCredentials(cleanEmail, password);
+    setIsLinkingLoading(false);
+
+    if (res.success && res.user) {
+      setValidatedUser(res.user);
+      setLinkingStep('choose_pin');
+    } else {
+      setLinkError(res.error || 'Email o contraseña incorrectos');
+    }
   };
 
   // Flujo de vinculación: confirmación de PIN
@@ -159,15 +172,23 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   };
 
   const handleSecondPin = async (confirmPin: string) => {
+    if (!validatedUser) {
+      setLinkError('Error en la sesión. Volvé a ingresar tus datos.');
+      setLinkingStep('creds');
+      return;
+    }
+
+    if (confirmPin !== linkingPin) {
+      setLinkError('Los dos PIN no coinciden. Probá de nuevo.');
+      setLinkingStep('choose_pin');
+      setLinkingPin('');
+      return;
+    }
+
     setIsLinkingLoading(true);
     setLinkError(null);
 
-    const result = await authService.linkDevice({
-      email: email.trim(),
-      password,
-      pin: linkingPin,
-      confirmPin,
-    });
+    const result = await authService.linkDeviceWithUser(validatedUser, linkingPin, confirmPin);
 
     setIsLinkingLoading(false);
 
@@ -374,9 +395,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
 
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors shadow-sm"
+              disabled={isLinkingLoading}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl transition-colors shadow-sm"
             >
-              Continuar a elegir PIN
+              {isLinkingLoading ? 'Verificando credenciales...' : 'Continuar a elegir PIN'}
             </button>
           </form>
         )}

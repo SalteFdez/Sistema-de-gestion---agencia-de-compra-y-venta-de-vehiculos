@@ -175,4 +175,52 @@ export class DeviceAuthService {
     }
     await this.supabase.signOut();
   }
+
+  async validateCredentials(email: string, password: string): Promise<{
+    success: boolean;
+    error?: string;
+    user?: LinkedUser;
+  }> {
+    const { data, error } = await this.supabase.signInWithPassword({ email, password });
+    if (error || !data.user) {
+      return { success: false, error: 'Email o contraseña incorrectos' };
+    }
+
+    const profile = await this.supabase.getUserProfile(data.user.id);
+    const nombre = profile?.nombre || email.split('@')[0];
+
+    return {
+      success: true,
+      user: {
+        id: data.user.id,
+        email: data.user.email || email,
+        nombre,
+      },
+    };
+  }
+
+  async linkDeviceWithUser(user: LinkedUser, pin: string, confirmPin: string): Promise<LinkDeviceResult> {
+    if (!/^\d{4}$/.test(pin) || !/^\d{4}$/.test(confirmPin)) {
+      return { success: false, error: 'El PIN debe tener exactamente 4 dígitos' };
+    }
+
+    if (pin !== confirmPin) {
+      return { success: false, error: 'Los PINes no coinciden' };
+    }
+
+    const salt = generateSalt();
+    const pinHash = await hashPin(pin, salt);
+
+    const stored: StoredDeviceAuth = {
+      salt,
+      pinHash,
+      user,
+    };
+
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(this.storageKey, JSON.stringify(stored));
+    }
+
+    return { success: true, user };
+  }
 }
