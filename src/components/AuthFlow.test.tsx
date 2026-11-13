@@ -167,4 +167,89 @@ describe('AuthFlow UI Integration', () => {
     fireEvent.click(cancelBtn);
     expect(screen.getByText(/hola, agustín fernandez/i)).toBeInTheDocument();
   });
+
+  it('permite navegar a Balances desde el botón grande de la pantalla principal y volver', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const mockCuentasService = {
+      obtenerCuentasConSaldo: vi.fn().mockResolvedValue([
+        { id: '1', nombre: 'Caja efectivo', tipo: 'efectivo', saldo: 1500000 },
+      ]),
+      obtenerDineroDisponible: vi.fn().mockResolvedValue(1500000),
+      crearCuenta: vi.fn(),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        cuentasService={mockCuentasService as unknown as any}
+      />
+    );
+
+    const btnBalances = screen.getByRole('button', { name: /balances/i });
+    expect(btnBalances).toBeInTheDocument();
+
+    fireEvent.click(btnBalances);
+
+    expect(await screen.findByText(/dinero disponible/i)).toBeInTheDocument();
+    expect(screen.getByTestId('total-disponible')).toHaveTextContent('$ 1.500.000');
+    expect(screen.getByText('Caja efectivo')).toBeInTheDocument();
+
+    // Botón volver
+    const btnVolver = screen.getByRole('button', { name: /volver/i });
+    fireEvent.click(btnVolver);
+
+    expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+  });
+
+  it('permite navegar a Cuentas desde Configuración y volver', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const mockCuentasService = {
+      obtenerCuentasConSaldo: vi.fn().mockResolvedValue([]),
+      obtenerDineroDisponible: vi.fn().mockResolvedValue(0),
+      crearCuenta: vi.fn(),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        cuentasService={mockCuentasService as unknown as any}
+      />
+    );
+
+    const btnCuentas = screen.getByRole('button', { name: /cuentas/i });
+    expect(btnCuentas).toBeInTheDocument();
+
+    fireEvent.click(btnCuentas);
+
+    expect(await screen.findByText(/nueva cuenta/i)).toBeInTheDocument();
+
+    const btnVolver = screen.getByRole('button', { name: /volver/i });
+    fireEvent.click(btnVolver);
+
+    expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+  });
 });

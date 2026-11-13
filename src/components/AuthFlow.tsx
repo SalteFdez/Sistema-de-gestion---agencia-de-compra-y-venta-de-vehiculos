@@ -4,24 +4,31 @@ import type { PinLockout, LockoutStatus } from '../lib/auth/pin-lockout';
 import type { SessionInactivityTracker } from '../lib/auth/session-inactivity';
 import { PinKeypad } from './PinKeypad';
 import { ChangePinFlow } from './ChangePinFlow';
+import { BalancesView } from './BalancesView';
+import { CuentasView } from './CuentasView';
+import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
 
 export interface AuthFlowProps {
   authService: DeviceAuthService;
   lockout: PinLockout;
   inactivity: SessionInactivityTracker;
+  cuentasService?: CuentasService;
 }
 
 export const AuthFlow: React.FC<AuthFlowProps> = ({
   authService,
   lockout,
   inactivity,
+  cuentasService,
 }) => {
   const [isLinked, setIsLinked] = useState<boolean>(() => authService.isDeviceLinked());
   const [linkedUser, setLinkedUser] = useState<LinkedUser | null>(() => authService.getLinkedUser());
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => inactivity.isUnlocked());
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
-  const [isChangingPin, setIsChangingPin] = useState<boolean>(false);
+  const [currentView, setCurrentView] = useState<'home' | 'balances' | 'cuentas' | 'change_pin'>('home');
+  const [cuentas, setCuentas] = useState<CuentaItem[]>([]);
+  const [totalDisponible, setTotalDisponible] = useState<number>(0);
 
   // Formulario de vinculación
   const [email, setEmail] = useState('');
@@ -45,6 +52,27 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
 
     return () => clearInterval(timer);
   }, [lockoutStatus?.isLocked, lockout]);
+
+  // Cargar cuentas y saldo disponible si está desbloqueado
+  const loadCuentasData = useCallback(async () => {
+    if (!cuentasService || !isUnlocked) return;
+    try {
+      const [list, total] = await Promise.all([
+        cuentasService.obtenerCuentasConSaldo(),
+        cuentasService.obtenerDineroDisponible(),
+      ]);
+      setCuentas(list);
+      setTotalDisponible(total);
+    } catch {
+      // Ignorar errores transitorios
+    }
+  }, [cuentasService, isUnlocked]);
+
+  useEffect(() => {
+    if (isUnlocked) {
+      loadCuentasData();
+    }
+  }, [isUnlocked, loadCuentasData]);
 
   // Manejador de inactividad: escuchar interacción y visibilidad
   const handleUserActivity = useCallback(() => {
@@ -156,19 +184,48 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     }
   };
 
-  // PANTALLA 1: Desbloqueado -> Pantalla Principal (o cambiar PIN)
+  // PANTALLA 1: Desbloqueado -> Pantalla Principal (o vistas internas)
   if (isLinked && isUnlocked && linkedUser) {
-    if (isChangingPin) {
+    if (currentView === 'change_pin') {
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
             <ChangePinFlow
               authService={authService}
               lockout={lockout}
-              onDone={() => setIsChangingPin(false)}
-              onCancel={() => setIsChangingPin(false)}
+              onDone={() => setCurrentView('home')}
+              onCancel={() => setCurrentView('home')}
             />
           </div>
+        </main>
+      );
+    }
+
+    if (currentView === 'balances') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <BalancesView
+            totalDisponible={totalDisponible}
+            cuentas={cuentas}
+            onVolver={() => setCurrentView('home')}
+            onIrACuentas={() => setCurrentView('cuentas')}
+          />
+        </main>
+      );
+    }
+
+    if (currentView === 'cuentas' && cuentasService) {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <CuentasView
+            cuentasIniciales={cuentas}
+            cuentasService={cuentasService}
+            onVolver={() => {
+              loadCuentasData();
+              setCurrentView('home');
+            }}
+            onCuentaCreada={loadCuentasData}
+          />
         </main>
       );
     }
@@ -186,24 +243,49 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           </button>
         </header>
 
-        <section className="text-center my-auto">
+        <section className="text-center my-auto w-full max-w-sm">
           <h1 className="text-3xl font-extrabold text-gray-900 mb-2">
             Hola, {linkedUser.nombre}
           </h1>
           <p className="text-gray-600 mb-6">Dispositivo vinculado correctamente.</p>
 
-          {/* Configuración provisoria con opción Cambiar PIN */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 max-w-xs mx-auto shadow-sm">
+          {/* Botón grande Balances */}
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                loadCuentasData();
+                setCurrentView('balances');
+              }}
+              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+            >
+              <span>Balances</span>
+            </button>
+          </div>
+
+          {/* Configuración provisoria */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
               Configuración
             </h2>
-            <button
-              type="button"
-              onClick={() => setIsChangingPin(true)}
-              className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg text-sm transition-colors"
-            >
-              Cambiar PIN
-            </button>
+            <div className="flex flex-col gap-2">
+              {cuentasService && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentView('cuentas')}
+                  className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg text-sm transition-colors text-center"
+                >
+                  Cuentas
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setCurrentView('change_pin')}
+                className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg text-sm transition-colors text-center"
+              >
+                Cambiar PIN
+              </button>
+            </div>
           </div>
         </section>
 
