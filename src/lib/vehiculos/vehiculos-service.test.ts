@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { VehiculosService, type VehiculosDbClient } from './vehiculos-service';
+import { VehiculosService, cuentasQueQuedaranNegativas, type VehiculosDbClient } from './vehiculos-service';
 
 describe('VehiculosService', () => {
   let mockDb: VehiculosDbClient;
@@ -284,6 +284,278 @@ describe('VehiculosService', () => {
 
       expect(mockDb.from).toHaveBeenCalledWith('v_inventario');
       expect(inventario).toEqual({ total: 12500000, cantidad: 3 });
+    });
+  });
+
+  describe('registrarCompra', () => {
+    it('no registra si falta la marca y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: '  ',
+        modelo: 'Gol',
+        anio: 2015,
+        precio: 5000000,
+        pagos: [{ cuentaId: 'c1', monto: 5000000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/marca.*obligatoria/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si el año está fuera de rango y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 1900,
+        precio: 5000000,
+        pagos: [{ cuentaId: 'c1', monto: 5000000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/año.*entre/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si el precio no es mayor que 0 y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 0,
+        pagos: [{ cuentaId: 'c1', monto: 1 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/precio.*mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si no hay ningún pago y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 5000000,
+        pagos: [],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/al menos un pago/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si algún pago es 0 o negativo y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 5000000,
+        pagos: [
+          { cuentaId: 'c1', monto: 5000000 },
+          { cuentaId: 'c2', monto: 0 },
+        ],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/cada pago.*mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si una cuenta aparece repetida en los pagos y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 5000000,
+        pagos: [
+          { cuentaId: 'c1', monto: 3000000 },
+          { cuentaId: 'c1', monto: 2000000 },
+        ],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/repetir una cuenta/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si la suma de los pagos no da el precio, e indica cuánto falta', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 5000000,
+        pagos: [
+          { cuentaId: 'c1', monto: 3000000 },
+          { cuentaId: 'c2', monto: 1500000 },
+        ],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/faltan \$ 500\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('si la suma de los pagos supera el precio, indica cuánto sobra', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 5000000,
+        pagos: [{ cuentaId: 'c1', monto: 5500000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sobran \$ 500\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('con datos válidos llama a registrar_compra y devuelve código y saldos nuevos', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: {
+          id: 'v9',
+          codigo: 'MC-007',
+          fecha: '2026-11-14',
+          saldos: [
+            { cuenta_id: 'c1', nombre: 'Caja efectivo', saldo: -300000 },
+            { cuenta_id: 'c2', nombre: 'Banco Galicia', saldo: 0 },
+          ],
+        },
+        error: null,
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 4500000,
+        pagos: [
+          { cuentaId: 'c1', monto: 3000000 },
+          { cuentaId: 'c2', monto: 1500000 },
+        ],
+      });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith(
+        'registrar_compra',
+        expect.objectContaining({
+          p_marca: 'Fiat',
+          p_modelo: 'Uno',
+          p_anio: 2010,
+          p_precio: 4500000,
+          p_pagos: [
+            { cuenta_id: 'c1', monto: 3000000 },
+            { cuenta_id: 'c2', monto: 1500000 },
+          ],
+        })
+      );
+      expect(res.success).toBe(true);
+      expect(res.codigo).toBe('MC-007');
+      expect(res.id).toBe('v9');
+      expect(res.saldos).toEqual([
+        { cuentaId: 'c1', nombre: 'Caja efectivo', saldo: -300000 },
+        { cuentaId: 'c2', nombre: 'Banco Galicia', saldo: 0 },
+      ]);
+    });
+
+    it('si la RPC falla, devuelve error y no devuelve código', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 5000000,
+        pagos: [{ cuentaId: 'c1', monto: 5000000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/failed to fetch/i);
+      expect(res.codigo).toBeUndefined();
+    });
+
+    it('con foto, la sube después de registrar la compra', async () => {
+      const rpc = vi.fn().mockResolvedValue({
+        data: { id: 'v10', codigo: 'MC-010', fecha: '2026-11-14', saldos: [] },
+        error: null,
+      });
+      mockDb.rpc = rpc;
+      const updateEq = vi.fn().mockResolvedValue({ error: null });
+      mockDb.from = vi.fn().mockReturnValue({ update: vi.fn().mockReturnValue({ eq: updateEq }) });
+
+      const upload = vi.fn().mockResolvedValue({ error: null });
+      const createSignedUrls = vi.fn().mockResolvedValue({
+        data: [{ path: 'v10/x.jpg', signedUrl: 'https://storage.test/v10' }],
+        error: null,
+      });
+      const storage = { from: vi.fn().mockReturnValue({ upload, createSignedUrls }) };
+
+      const service = new VehiculosService(mockDb, storage);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 5000000,
+        pagos: [{ cuentaId: 'c1', monto: 5000000 }],
+        foto: new Blob(['jpeg'], { type: 'image/jpeg' }),
+      });
+
+      expect(res.success).toBe(true);
+      expect(upload).toHaveBeenCalledTimes(1);
+      expect(upload.mock.calls[0][0]).toMatch(/^v10\/.+\.jpg$/);
+      expect(rpc.mock.invocationCallOrder[0]).toBeLessThan(upload.mock.invocationCallOrder[0]);
+    });
+
+    it('si la foto falla después de la compra, la compra queda guardada con aviso', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: { id: 'v11', codigo: 'MC-011', fecha: '2026-11-14', saldos: [] },
+        error: null,
+      });
+      const storage = {
+        from: vi.fn().mockReturnValue({
+          upload: vi.fn().mockResolvedValue({ error: { message: 'Network error' } }),
+          createSignedUrls: vi.fn(),
+        }),
+      };
+
+      const service = new VehiculosService(mockDb, storage);
+      const res = await service.registrarCompra({
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        precio: 5000000,
+        pagos: [{ cuentaId: 'c1', monto: 5000000 }],
+        foto: new Blob(['jpeg'], { type: 'image/jpeg' }),
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.codigo).toBe('MC-011');
+      expect(res.avisoFoto).toMatch(/no se pudo subir la foto/i);
+    });
+  });
+
+  describe('cuentasQueQuedaranNegativas', () => {
+    it('devuelve solo las cuentas que quedarían con saldo negativo, con el saldo resultante', () => {
+      const resultado = cuentasQueQuedaranNegativas(
+        [
+          { cuentaId: 'c1', monto: 1500000 },
+          { cuentaId: 'c2', monto: 1000000 },
+        ],
+        [
+          { cuentaId: 'c1', nombre: 'Caja efectivo', saldo: 1000000 },
+          { cuentaId: 'c2', nombre: 'Banco Galicia', saldo: 2000000 },
+        ]
+      );
+
+      expect(resultado).toEqual([{ cuentaId: 'c1', nombre: 'Caja efectivo', saldoResultante: -500000 }]);
     });
   });
 

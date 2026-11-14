@@ -7,6 +7,7 @@ import { ChangePinFlow } from './ChangePinFlow';
 import { BalancesView } from './BalancesView';
 import { CuentasView } from './CuentasView';
 import { VehiculosView } from './VehiculosView';
+import { CompraVehiculoView } from './CompraVehiculoView';
 import type { VehiculosService, VehiculoItem } from '../lib/vehiculos/vehiculos-service';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
 
@@ -32,7 +33,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => inactivity.isUnlocked());
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar'>('home');
   const [cuentas, setCuentas] = useState<CuentaItem[]>([]);
   const [totalDisponible, setTotalDisponible] = useState<number>(0);
   const [vehiculos, setVehiculos] = useState<VehiculoItem[]>([]);
@@ -253,6 +254,29 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
+    if (currentView === 'comprar') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <CompraVehiculoView
+            cuentas={cuentas}
+            onVolver={() => setCurrentView('home')}
+            onIrACuentas={() => setCurrentView('cuentas')}
+            onRegistrar={
+              vehiculosService
+                ? async (params) => {
+                    const res = await vehiculosService.registrarCompra(params);
+                    if (res.success) {
+                      await Promise.all([loadCuentasData(), loadVehiculosData()]);
+                    }
+                    return res;
+                  }
+                : undefined
+            }
+          />
+        </main>
+      );
+    }
+
     if (currentView === 'vehiculos') {
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
@@ -352,6 +376,20 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <span>Vehículos</span>
+            </button>
+          </div>
+
+          {/* Botón grande Comprar vehículo */}
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                loadCuentasData();
+                setCurrentView('comprar');
+              }}
+              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+            >
+              <span>Comprar vehículo</span>
             </button>
           </div>
 

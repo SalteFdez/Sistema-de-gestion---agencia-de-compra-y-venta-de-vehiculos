@@ -1,3 +1,5 @@
+import { formatMoney } from '../format/money';
+
 export interface VehiculoItem {
   id: string;
   codigo: string;
@@ -72,6 +74,54 @@ export interface VehiculosStorageClient {
   };
 }
 
+export interface PagoCompra {
+  cuentaId: string;
+  monto: number;
+}
+
+export interface RegistrarCompraParams {
+  marca: string;
+  modelo: string;
+  anio: number;
+  precio: number;
+  color?: string;
+  patente?: string;
+  vendedor?: string;
+  foto?: Blob;
+  pagos: PagoCompra[];
+}
+
+export interface RegistrarCompraResult {
+  success: boolean;
+  error?: string;
+  codigo?: string;
+  id?: string;
+  saldos?: Array<{ cuentaId: string; nombre: string; saldo: number }>;
+  avisoFoto?: string;
+}
+
+export interface CuentaSaldo {
+  cuentaId: string;
+  nombre: string;
+  saldo: number;
+}
+
+/**
+ * Cuentas que quedarían con saldo negativo si se aplican los pagos propuestos.
+ * Solo sirve para el aviso del cliente: la RPC no bloquea saldos negativos.
+ */
+export function cuentasQueQuedaranNegativas(
+  pagos: PagoCompra[],
+  saldos: CuentaSaldo[]
+): Array<{ cuentaId: string; nombre: string; saldoResultante: number }> {
+  return saldos
+    .map((c) => {
+      const pagado = pagos.filter((p) => p.cuentaId === c.cuentaId).reduce((acc, p) => acc + p.monto, 0);
+      return { cuentaId: c.cuentaId, nombre: c.nombre, saldoResultante: c.saldo - pagado };
+    })
+    .filter((c) => c.saldoResultante < 0);
+}
+
 export interface AgregarFotoResult {
   success: boolean;
   fotoUrl?: string;
@@ -95,6 +145,69 @@ export class VehiculosService {
   constructor(db: VehiculosDbClient, storage?: VehiculosStorageClient) {
     this.db = db;
     this.storage = storage;
+  }
+
+  async registrarCompra(params: RegistrarCompraParams): Promise<RegistrarCompraResult> {
+    if (!params.marca?.trim()) {
+      return { success: false, error: 'La marca es obligatoria' };
+    }
+    const anioMaximo = new Date().getFullYear() + 1;
+    if (params.anio < 1950 || params.anio > anioMaximo) {
+      return { success: false, error: `El año tiene que estar entre 1950 y ${anioMaximo}` };
+    }
+    if (!(params.precio > 0)) {
+      return { success: false, error: 'El precio tiene que ser mayor que 0' };
+    }
+    if (params.pagos.length === 0) {
+      return { success: false, error: 'Tiene que haber al menos un pago' };
+    }
+    if (params.pagos.some((p) => !(p.monto > 0))) {
+      return { success: false, error: 'Cada pago tiene que ser mayor que 0' };
+    }
+    const cuentasVistas = new Set(params.pagos.map((p) => p.cuentaId));
+    if (cuentasVistas.size !== params.pagos.length) {
+      return { success: false, error: 'No podés repetir una cuenta en los pagos' };
+    }
+    const suma = params.pagos.reduce((acc, p) => acc + p.monto, 0);
+    if (suma !== params.precio) {
+      const diferencia = Math.abs(params.precio - suma);
+      const detalle = suma < params.precio
+        ? `Faltan ${formatMoney(diferencia)}`
+        : `Sobran ${formatMoney(diferencia)}`;
+      return { success: false, error: `La suma de los pagos no coincide con el precio. ${detalle}` };
+    }
+
+    const { data, error } = await this.db.rpc('registrar_compra', {
+      p_marca: params.marca.trim(),
+      p_modelo: params.modelo.trim(),
+      p_anio: params.anio,
+      p_precio: params.precio,
+      p_color: params.color?.trim() || null,
+      p_patente: params.patente?.trim() || null,
+      p_vendedor: params.vendedor?.trim() || null,
+      p_pagos: params.pagos.map((p) => ({ cuenta_id: p.cuentaId, monto: p.monto })),
+    });
+    if (error) {
+      return { success: false, error: error.message || 'No se pudo registrar la compra' };
+    }
+
+    const fila = data as {
+      id: string;
+      codigo: string;
+      saldos: Array<{ cuenta_id: string; nombre: string; saldo: number | string }>;
+    };
+    const saldos = fila.saldos.map((s) => ({ cuentaId: s.cuenta_id, nombre: s.nombre, saldo: Number(s.saldo) || 0 }));
+
+    // La foto va después de la RPC: si falla, la compra igual queda guardada.
+    let avisoFoto: string | undefined;
+    if (params.foto) {
+      const foto = await this.agregarFoto(fila.id, params.foto);
+      if (!foto.success) {
+        avisoFoto = foto.error;
+      }
+    }
+
+    return { success: true, id: fila.id, codigo: fila.codigo, saldos, avisoFoto };
   }
 
   async obtenerInventario(): Promise<{ total: number; cantidad: number }> {
