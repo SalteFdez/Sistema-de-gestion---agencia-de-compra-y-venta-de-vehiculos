@@ -6,7 +6,7 @@ import { PinKeypad } from './PinKeypad';
 import { ChangePinFlow } from './ChangePinFlow';
 import { BalancesView } from './BalancesView';
 import { CuentasView } from './CuentasView';
-import { VehiculosView } from './VehiculosView';
+import { VehiculosView, type FiltroEstado } from './VehiculosView';
 import { CompraVehiculoView } from './CompraVehiculoView';
 import { VenderVehiculoView } from './VenderVehiculoView';
 import type { VehiculosService, VehiculoItem, DetalleVehiculo } from '../lib/vehiculos/vehiculos-service';
@@ -70,6 +70,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [inventarioError, setInventarioError] = useState<boolean>(false);
 
   const [vehiculosError, setVehiculosError] = useState<boolean>(false);
+  // Filtro de Vehículos: vive acá para sobrevivir a abrir el detalle y volver
+  const [filtroVehiculos, setFiltroVehiculos] = useState<FiltroEstado>('stock');
 
   const loadVehiculosData = useCallback(async () => {
     if (!vehiculosService) return;
@@ -380,6 +382,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           <VehiculosView
             vehiculos={vehiculos}
             errorCarga={vehiculosError}
+            filtro={filtroVehiculos}
+            onCambiarFiltro={setFiltroVehiculos}
             onAbrirDetalle={(id) => void abrirDetalle(id)}
             onReintentar={loadVehiculosData}
             onVolver={() => setCurrentView('home')}

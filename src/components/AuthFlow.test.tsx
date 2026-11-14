@@ -815,6 +815,111 @@ describe('AuthFlow UI Integration', () => {
     expect(mockVehiculosService.listarVehiculos.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('el filtro elegido en Vehículos sigue igual al volver del detalle', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([
+        { id: 'v40', codigo: 'MC-040', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, estado: 'vendido', fotoUrl: null, fechaIngreso: '2026-11-13' },
+        { id: 'v41', codigo: 'MC-041', marca: 'Ford', modelo: 'Ka', anio: 2012, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-13' },
+      ]),
+      obtenerDetalle: vi.fn().mockResolvedValue({
+        success: true,
+        detalle: {
+          id: 'v40', codigo: 'MC-040', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+          estado: 'vendido', origen: 'compra', fechaIngreso: '2026-11-13', vendedor: null,
+          valorIngreso: 0, gastosAsignados: 0, costoReal: 0, pagos: [], venta: null,
+        },
+      }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    await screen.findByText('MC-041');
+    fireEvent.click(screen.getByRole('button', { name: 'Vendidos' }));
+    fireEvent.click(await screen.findByText('MC-040'));
+    expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    expect(await screen.findByText('MC-040')).toBeInTheDocument();
+    expect(screen.queryByText('MC-041')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vendidos' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('después de vender, el vehículo pasa de "En stock" a "Vendidos" al volver al listado', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const enStock = {
+      id: 'v50', codigo: 'MC-050', marca: 'Peugeot', modelo: '208', anio: 2019, color: null,
+      estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-14',
+    };
+    const vendido = { ...enStock, estado: 'vendido' };
+    const mockCuentasService = {
+      obtenerCuentasConSaldo: vi.fn().mockResolvedValue([
+        { id: 'c1', nombre: 'Caja efectivo', tipo: 'efectivo', saldo: 5000000 },
+      ]),
+      obtenerDineroDisponible: vi.fn().mockResolvedValue(5000000),
+      crearCuenta: vi.fn(),
+    };
+    const mockVehiculosService = {
+      // Primera carga: en stock; después de la venta, vendido
+      listarVehiculos: vi.fn().mockResolvedValueOnce([enStock]).mockResolvedValue([vendido]),
+      obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+      registrarVenta: vi.fn().mockResolvedValue({ success: true, ventaId: 'ven50', codigo: 'MC-050', ganancia: 0 }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        cuentasService={mockCuentasService as unknown as any}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
+    fireEvent.click(await screen.findByText('MC-050'));
+    fireEvent.change(await screen.findByLabelText(/precio de venta/i), { target: { value: '5000000' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
+    await screen.findByTestId('codigo-venta');
+    fireEvent.click(screen.getByRole('button', { name: /volver al inicio/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    await screen.findByRole('button', { name: 'Vendidos' });
+    expect(screen.queryByText('MC-050')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendidos' }));
+    expect(await screen.findByText('MC-050')).toBeInTheDocument();
+  });
+
   it('al abrir Vehículos muestra los vehículos que trae el servicio', async () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),

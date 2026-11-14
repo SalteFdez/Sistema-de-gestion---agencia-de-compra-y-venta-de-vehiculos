@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
 import { VehiculosView } from './VehiculosView';
 import type { VehiculoItem } from '../lib/vehiculos/vehiculos-service';
@@ -27,7 +27,8 @@ describe('VehiculosView', () => {
     expect(screen.getByText(/Uno/)).toBeInTheDocument();
     expect(screen.getByText(/2010/)).toBeInTheDocument();
     expect(screen.getByText(/Rojo/)).toBeInTheDocument();
-    expect(screen.getByText('En stock')).toBeInTheDocument();
+    // "En stock" también es el botón del filtro: buscamos el estado dentro de la tarjeta
+    expect(within(screen.getByRole('article')).getByText('En stock')).toBeInTheDocument();
     expect(screen.getByRole('img')).toHaveAttribute('src', 'https://storage.test/uno.jpg');
   });
 
@@ -134,6 +135,54 @@ describe('VehiculosView', () => {
     expect(onAgregarFoto).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /sin foto · agregar/i })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('arranca en "En stock" y muestra solo los vehículos en stock', () => {
+    const vehiculos: VehiculoItem[] = [
+      { id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-13' },
+      { id: 'v2', codigo: 'MC-002', marca: 'Ford', modelo: 'Ka', anio: 2012, color: null, estado: 'vendido', fotoUrl: null, fechaIngreso: '2026-11-13' },
+    ];
+
+    render(<VehiculosView vehiculos={vehiculos} onVolver={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'En stock' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Vendidos' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('MC-001')).toBeInTheDocument();
+    expect(screen.queryByText('MC-002')).not.toBeInTheDocument();
+  });
+
+  it('"Vendidos" muestra solo los vendidos, y "Todos" muestra todos con su estado', () => {
+    const vehiculos: VehiculoItem[] = [
+      { id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-13' },
+      { id: 'v2', codigo: 'MC-002', marca: 'Ford', modelo: 'Ka', anio: 2012, color: null, estado: 'vendido', fotoUrl: null, fechaIngreso: '2026-11-13' },
+    ];
+
+    render(<VehiculosView vehiculos={vehiculos} onVolver={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendidos' }));
+    expect(screen.getByText('MC-002')).toBeInTheDocument();
+    expect(screen.queryByText('MC-001')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(screen.getByText('MC-001')).toBeInTheDocument();
+    expect(screen.getByText('MC-002')).toBeInTheDocument();
+    expect(within(screen.getAllByRole('article')[1]).getByText('Vendido')).toBeInTheDocument();
+  });
+
+  it('si el filtro no tiene vehículos, avisa con un mensaje claro en lugar de una pantalla vacía', () => {
+    const vehiculos: VehiculoItem[] = [
+      { id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-13' },
+    ];
+
+    render(<VehiculosView vehiculos={vehiculos} onVolver={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendidos' }));
+    expect(screen.getByText('No hay vehículos vendidos todavía')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'En stock' }));
+    expect(screen.queryByText('No hay vehículos vendidos todavía')).not.toBeInTheDocument();
+    expect(screen.getByText('MC-001')).toBeInTheDocument();
   });
 
   it('tocar la tarjeta de un vehículo abre su detalle', () => {

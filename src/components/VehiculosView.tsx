@@ -17,7 +17,12 @@ export interface VehiculosViewProps {
   onAgregarFoto?: (id: string, foto: Blob) => Promise<AgregarFotoResult>;
   comprimirFoto?: (foto: Blob) => Promise<Blob>;
   onAbrirDetalle?: (id: string) => void;
+  /** Filtro por estado; si lo maneja quien navega, se pasa así sobrevive al detalle */
+  filtro?: FiltroEstado;
+  onCambiarFiltro?: (filtro: FiltroEstado) => void;
 }
+
+export type FiltroEstado = 'stock' | 'vendidos' | 'todos';
 
 const ETIQUETA_ESTADO: Record<VehiculoItem['estado'], string> = {
   en_stock: 'En stock',
@@ -34,8 +39,23 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
   onAgregarFoto,
   comprimirFoto = comprimirFotoEnNavegador,
   onAbrirDetalle,
+  filtro,
+  onCambiarFiltro,
 }) => {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [filtroInterno, setFiltroInterno] = useState<FiltroEstado>('stock');
+  const filtroEstado = filtro ?? filtroInterno;
+  const setFiltroEstado = (f: FiltroEstado) => {
+    setFiltroInterno(f);
+    onCambiarFiltro?.(f);
+  };
+
+  // En stock incluye "reservado" (sigue sin vender); Vendidos solo "vendido"
+  const visibles = vehiculos.filter((v) => {
+    if (filtroEstado === 'todos') return true;
+    if (filtroEstado === 'vendidos') return v.estado === 'vendido';
+    return v.estado === 'en_stock' || v.estado === 'reservado';
+  });
   // Fotos agregadas desde el listado, por id de vehículo (se muestran sin recargar la lista)
   const [fotosNuevas, setFotosNuevas] = useState<Record<string, string>>({});
   const [erroresFoto, setErroresFoto] = useState<Record<string, string>>({});
@@ -102,8 +122,38 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
         </div>
       )}
 
+      <div className="grid grid-cols-3 gap-2 mb-4" role="group" aria-label="Filtrar por estado">
+        {(['En stock', 'Vendidos', 'Todos'] as const).map((etiqueta) => {
+          const valor = etiqueta === 'En stock' ? 'stock' : etiqueta === 'Vendidos' ? 'vendidos' : 'todos';
+          const activo = filtroEstado === valor;
+          return (
+            <button
+              key={valor}
+              type="button"
+              aria-pressed={activo}
+              onClick={() => setFiltroEstado(valor)}
+              className={`py-2 text-sm font-medium rounded-xl border ${
+                activo ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+              }`}
+            >
+              {etiqueta}
+            </button>
+          );
+        })}
+      </div>
+
+      {visibles.length === 0 && (
+        <p className="text-sm text-gray-600 bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center mb-4">
+          {filtroEstado === 'vendidos'
+            ? 'No hay vehículos vendidos todavía'
+            : filtroEstado === 'stock'
+              ? 'No hay vehículos en stock'
+              : 'No hay vehículos cargados todavía'}
+        </p>
+      )}
+
       <div className="space-y-3">
-        {vehiculos.map((v) => {
+        {visibles.map((v) => {
           const fotoMostrada = fotosNuevas[v.id] ?? v.fotoUrl;
           return (
             <article
