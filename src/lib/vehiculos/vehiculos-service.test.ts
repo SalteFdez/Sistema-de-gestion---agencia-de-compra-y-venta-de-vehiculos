@@ -600,6 +600,209 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('obtenerDetalle', () => {
+    it('si el vehículo no existe, devuelve error', async () => {
+      const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+      const eq = vi.fn().mockReturnValue({ maybeSingle });
+      const select = vi.fn().mockReturnValue({ eq });
+      mockDb.from = vi.fn().mockReturnValue({ select });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('no-existe');
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/no se encontró el vehículo/i);
+    });
+
+    it('devuelve los datos del vehículo y su costo real de v_costo_vehiculo', async () => {
+      const filaVehiculo = {
+        id: 'v1',
+        codigo: 'MC-001',
+        marca: 'Fiat',
+        modelo: 'Uno',
+        anio: 2010,
+        color: 'Rojo',
+        patente: 'AB123CD',
+        estado: 'en_stock',
+        origen: 'compra',
+        fecha_ingreso: '2026-11-13',
+        vendedor_texto: 'Juan Pérez',
+        valor_ingreso: 3000000,
+      };
+      const filaCosto = { vehiculo_id: 'v1', valor_ingreso: 3000000, gastos_asignados: 0, costo_real: 3000000 };
+      // Consulta encadenable, igual que en el test de pagos
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: [], error: null })) };
+        }
+        const fila = tabla === 'v_costo_vehiculo' ? filaCosto : filaVehiculo;
+        return { select: vi.fn().mockReturnValue(consulta({ data: fila, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v1');
+
+      expect(res.success).toBe(true);
+      expect(res.detalle).toEqual(
+        expect.objectContaining({
+          codigo: 'MC-001',
+          marca: 'Fiat',
+          patente: 'AB123CD',
+          origen: 'compra',
+          fechaIngreso: '2026-11-13',
+          vendedor: 'Juan Pérez',
+          valorIngreso: 3000000,
+          gastosAsignados: 0,
+          costoReal: 3000000,
+        })
+      );
+    });
+  });
+
+  describe('obtenerDetalle: pagos', () => {
+    it('lista los pagos de la compra con el nombre de cada cuenta y el monto en positivo', async () => {
+      // Consulta encadenable: cada eq() devuelve la misma consulta, y al await resuelve el resultado
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filaVehiculo = {
+        id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+        estado: 'en_stock', origen: 'compra', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 4500000,
+      };
+      const filaCosto = { vehiculo_id: 'v1', valor_ingreso: 4500000, gastos_asignados: 0, costo_real: 4500000 };
+      const movimientos = [
+        { monto: -3000000, cuenta: { nombre: 'Caja efectivo' } },
+        { monto: -1500000, cuenta: { nombre: 'Banco Galicia' } },
+      ];
+
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: movimientos, error: null })) };
+        }
+        const fila = tabla === 'v_costo_vehiculo' ? filaCosto : filaVehiculo;
+        return { select: vi.fn().mockReturnValue(consulta({ data: fila, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v1');
+
+      expect(res.detalle?.pagos).toEqual([
+        { cuentaNombre: 'Caja efectivo', monto: 3000000 },
+        { cuentaNombre: 'Banco Galicia', monto: 1500000 },
+      ]);
+    });
+
+    it('un vehículo de stock existente no tiene pagos', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filaVehiculo = {
+        id: 'v2', codigo: 'MC-002', marca: 'Ford', modelo: 'Ka', anio: 2012, color: null, patente: null,
+        estado: 'en_stock', origen: 'inventario_inicial', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 0,
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: [], error: null })) };
+        }
+        const fila = tabla === 'v_costo_vehiculo'
+          ? { vehiculo_id: 'v2', valor_ingreso: 0, gastos_asignados: 0, costo_real: 0 }
+          : filaVehiculo;
+        return { select: vi.fn().mockReturnValue(consulta({ data: fila, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v2');
+
+      expect(res.detalle?.pagos).toEqual([]);
+      expect(res.detalle?.origen).toBe('inventario_inicial');
+    });
+
+    it('si falla la consulta de pagos, devuelve error y no un detalle con pagos vacíos', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filaVehiculo = {
+        id: 'v3', codigo: 'MC-003', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+        estado: 'en_stock', origen: 'compra', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 3000000,
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: null, error: { message: 'Failed to fetch' } })) };
+        }
+        const fila = tabla === 'v_costo_vehiculo'
+          ? { vehiculo_id: 'v3', valor_ingreso: 3000000, gastos_asignados: 0, costo_real: 3000000 }
+          : filaVehiculo;
+        return { select: vi.fn().mockReturnValue(consulta({ data: fila, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v3');
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/failed to fetch/i);
+      expect(res.detalle).toBeUndefined();
+    });
+
+    it('si falla la consulta de costo, devuelve error y no un costo inventado', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filaVehiculo = {
+        id: 'v4', codigo: 'MC-004', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+        estado: 'en_stock', origen: 'compra', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 3000000,
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'v_costo_vehiculo') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: null, error: { message: 'Failed to fetch' } })) };
+        }
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: [], error: null })) };
+        }
+        return { select: vi.fn().mockReturnValue(consulta({ data: filaVehiculo, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v4');
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/failed to fetch/i);
+      expect(res.detalle).toBeUndefined();
+    });
+  });
+
   describe('obtenerInventario (errores)', () => {
     it('si la consulta falla, da error en lugar de mostrar inventario en cero', async () => {
       const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });

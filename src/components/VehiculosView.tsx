@@ -16,6 +16,7 @@ export interface VehiculosViewProps {
   onCargarStock?: (params: CargarStockParams) => Promise<CargarStockResult>;
   onAgregarFoto?: (id: string, foto: Blob) => Promise<AgregarFotoResult>;
   comprimirFoto?: (foto: Blob) => Promise<Blob>;
+  onAbrirDetalle?: (id: string) => void;
 }
 
 const ETIQUETA_ESTADO: Record<VehiculoItem['estado'], string> = {
@@ -32,6 +33,7 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
   onCargarStock,
   onAgregarFoto,
   comprimirFoto = comprimirFotoEnNavegador,
+  onAbrirDetalle,
 }) => {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   // Fotos agregadas desde el listado, por id de vehículo (se muestran sin recargar la lista)
@@ -104,11 +106,19 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
         {vehiculos.map((v) => {
           const fotoMostrada = fotosNuevas[v.id] ?? v.fotoUrl;
           return (
-            <article key={v.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+            <article
+              key={v.id}
+              onClick={() => onAbrirDetalle?.(v.id)}
+              className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm cursor-pointer"
+            >
               {fotoMostrada ? (
                 <img src={fotoMostrada} alt={`${v.marca} ${v.modelo}`} className="w-full h-48 object-cover" />
               ) : (
-                <div className="w-full h-48 flex flex-col items-center justify-center gap-2 bg-gray-100 px-4">
+                <div
+                  className="w-full h-48 flex flex-col items-center justify-center gap-2 bg-gray-100 px-4"
+                  // El toque sobre el aviso de foto no debe abrir el detalle de la tarjeta
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <button
                     type="button"
                     onClick={() => inputsFoto.current[v.id]?.click()}

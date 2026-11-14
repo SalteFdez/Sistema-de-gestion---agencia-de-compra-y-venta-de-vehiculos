@@ -591,6 +591,151 @@ describe('AuthFlow UI Integration', () => {
     expect(mockVehiculosService.listarVehiculos.mock.calls.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('desde el detalle, "Volver" regresa al listado sin volver a pedirlo', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([
+        { id: 'v21', codigo: 'MC-021', marca: 'Fiat', modelo: '147', anio: 1990, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-14' },
+      ]),
+      obtenerDetalle: vi.fn().mockResolvedValue({
+        success: true,
+        detalle: {
+          id: 'v21', codigo: 'MC-021', marca: 'Fiat', modelo: '147', anio: 1990, color: null, patente: null,
+          estado: 'en_stock', origen: 'inventario_inicial', fechaIngreso: '2026-11-14', vendedor: null,
+          valorIngreso: 0, gastosAsignados: 0, costoReal: 0, pagos: [],
+        },
+      }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    fireEvent.click(await screen.findByText('MC-021'));
+    // Esperamos el contenido ya cargado (el título también existe mientras carga)
+    expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Vehículos' })).toBeInTheDocument();
+    expect(await screen.findByText('MC-021')).toBeInTheDocument();
+    expect(mockVehiculosService.listarVehiculos).toHaveBeenCalledTimes(1);
+  });
+
+  it('una foto agregada desde el listado sigue visible después de abrir el detalle y volver', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([
+        { id: 'v22', codigo: 'MC-022', marca: 'Fiat', modelo: '147', anio: 1990, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-14' },
+      ]),
+      agregarFoto: vi.fn().mockResolvedValue({ success: true, fotoUrl: 'https://storage.test/147' }),
+      obtenerDetalle: vi.fn().mockResolvedValue({
+        success: true,
+        detalle: {
+          id: 'v22', codigo: 'MC-022', marca: 'Fiat', modelo: '147', anio: 1990, color: null, patente: null,
+          estado: 'en_stock', origen: 'inventario_inicial', fechaIngreso: '2026-11-14', vendedor: null,
+          valorIngreso: 0, gastosAsignados: 0, costoReal: 0, pagos: [],
+        },
+      }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        vehiculosService={mockVehiculosService as unknown as any}
+        comprimirFoto={async (f) => f}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    await screen.findByText('MC-022');
+    fireEvent.change(screen.getByLabelText('Elegir foto de MC-022'), {
+      target: { files: [new File(['jpeg'], 'a.jpg', { type: 'image/jpeg' })] },
+    });
+    expect(await screen.findByRole('img', { name: /fiat 147/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('img', { name: /fiat 147/i }));
+    expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    expect(await screen.findByRole('img', { name: /fiat 147/i })).toHaveAttribute('src', 'https://storage.test/147');
+  });
+
+  it('si falla la carga del detalle, muestra un mensaje con "Reintentar" que vuelve a intentar', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const detalle = {
+      id: 'v23', codigo: 'MC-023', marca: 'Fiat', modelo: 'Palio', anio: 2005, color: null, patente: null,
+      estado: 'en_stock', origen: 'inventario_inicial', fechaIngreso: '2026-11-14', vendedor: null,
+      valorIngreso: 0, gastosAsignados: 0, costoReal: 0, pagos: [],
+    };
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([
+        { id: 'v23', codigo: 'MC-023', marca: 'Fiat', modelo: 'Palio', anio: 2005, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-14' },
+      ]),
+      obtenerDetalle: vi
+        .fn()
+        .mockResolvedValueOnce({ success: false, error: 'Failed to fetch' })
+        .mockResolvedValueOnce({ success: true, detalle }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    fireEvent.click(await screen.findByText('MC-023'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo cargar el detalle/i);
+    fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+
+    expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
+    expect(mockVehiculosService.obtenerDetalle).toHaveBeenCalledTimes(2);
+  });
+
   it('al abrir Vehículos muestra los vehículos que trae el servicio', async () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),

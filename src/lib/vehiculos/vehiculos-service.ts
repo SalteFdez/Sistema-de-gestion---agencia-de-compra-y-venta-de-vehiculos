@@ -30,22 +30,20 @@ export interface CargarStockResult {
   avisoFoto?: string;
 }
 
+/** Consulta de lectura encadenable (eq / order); al await devuelve { data, error }. */
+export interface Consulta extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
+  eq: (col: string, value: unknown) => Consulta;
+  order: (col: string, options: { ascending: boolean }) => Consulta;
+  maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>;
+}
+
 export interface VehiculosDbClient {
   rpc: (fn: string, params: Record<string, unknown>) => Promise<{
     data: unknown;
     error: { message: string } | null;
   }>;
   from: (table: string) => {
-    select: (columns: string) => {
-      order: (col: string, options: { ascending: boolean }) => Promise<{
-        data: unknown[] | null;
-        error: { message: string } | null;
-      }>;
-      maybeSingle: () => Promise<{
-        data: unknown;
-        error: { message: string } | null;
-      }>;
-    };
+    select: (columns: string) => Consulta;
     insert: (values: Record<string, unknown>) => {
       select: () => {
         single: () => Promise<{
@@ -120,6 +118,35 @@ export function cuentasQueQuedaranNegativas(
       return { cuentaId: c.cuentaId, nombre: c.nombre, saldoResultante: c.saldo - pagado };
     })
     .filter((c) => c.saldoResultante < 0);
+}
+
+export interface PagoDetalle {
+  cuentaNombre: string;
+  monto: number;
+}
+
+export interface DetalleVehiculo {
+  id: string;
+  codigo: string;
+  marca: string;
+  modelo: string;
+  anio: number;
+  color: string | null;
+  patente: string | null;
+  estado: VehiculoItem['estado'];
+  origen: 'compra' | 'permuta' | 'inventario_inicial';
+  fechaIngreso: string;
+  vendedor: string | null;
+  valorIngreso: number;
+  gastosAsignados: number;
+  costoReal: number;
+  pagos: PagoDetalle[];
+}
+
+export interface ObtenerDetalleResult {
+  success: boolean;
+  error?: string;
+  detalle?: DetalleVehiculo;
 }
 
 export interface AgregarFotoResult {
@@ -208,6 +235,68 @@ export class VehiculosService {
     }
 
     return { success: true, id: fila.id, codigo: fila.codigo, saldos, avisoFoto };
+  }
+
+  async obtenerDetalle(id: string): Promise<ObtenerDetalleResult> {
+    const { data, error } = await this.db
+      .from('vehiculos')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    if (!data) {
+      return { success: false, error: 'No se encontró el vehículo' };
+    }
+
+    const fila = data as Record<string, unknown>;
+    const { data: costo, error: errorCosto } = await this.db
+      .from('v_costo_vehiculo')
+      .select('*')
+      .eq('vehiculo_id', id)
+      .maybeSingle();
+    if (errorCosto) {
+      return { success: false, error: errorCosto.message };
+    }
+    const filaCosto = (costo ?? {}) as Record<string, unknown>;
+
+    // Pagos: movimientos de compra no anulados, con el nombre de la cuenta; el monto sale en positivo
+    const { data: movimientos, error: errorPagos } = await this.db
+      .from('movimientos')
+      .select('monto, cuenta:cuentas(nombre)')
+      .eq('vehiculo_id', id)
+      .eq('tipo', 'compra')
+      .eq('anulado', false);
+    if (errorPagos) {
+      return { success: false, error: errorPagos.message };
+    }
+    const filasPago = (movimientos ?? []) as Array<{ monto: number | string; cuenta: { nombre: string } | null }>;
+    const pagos: PagoDetalle[] = filasPago.map((m) => ({
+      cuentaNombre: m.cuenta?.nombre ?? '',
+      monto: Math.abs(Number(m.monto)) || 0,
+    }));
+
+    return {
+      success: true,
+      detalle: {
+        id: String(fila.id),
+        codigo: String(fila.codigo),
+        marca: String(fila.marca),
+        modelo: String(fila.modelo),
+        anio: Number(fila.anio),
+        color: (fila.color as string | null) ?? null,
+        patente: (fila.patente as string | null) ?? null,
+        estado: fila.estado as VehiculoItem['estado'],
+        origen: fila.origen as DetalleVehiculo['origen'],
+        fechaIngreso: String(fila.fecha_ingreso),
+        vendedor: (fila.vendedor_texto as string | null) ?? null,
+        valorIngreso: Number(filaCosto.valor_ingreso ?? fila.valor_ingreso) || 0,
+        gastosAsignados: Number(filaCosto.gastos_asignados) || 0,
+        costoReal: Number(filaCosto.costo_real ?? fila.valor_ingreso) || 0,
+        pagos,
+      },
+    };
   }
 
   async obtenerInventario(): Promise<{ total: number; cantidad: number }> {

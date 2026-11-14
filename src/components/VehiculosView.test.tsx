@@ -136,6 +136,32 @@ describe('VehiculosView', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('tocar la tarjeta de un vehículo abre su detalle', () => {
+    const vehiculos: VehiculoItem[] = [
+      { id: 'v2', codigo: 'MC-002', marca: 'Ford', modelo: 'Ka', anio: 2012, color: null, estado: 'en_stock', fotoUrl: 'https://storage.test/ka.jpg', fechaIngreso: '2026-11-13' },
+    ];
+    const onAbrirDetalle = vi.fn();
+
+    render(<VehiculosView vehiculos={vehiculos} onVolver={vi.fn()} onAbrirDetalle={onAbrirDetalle} />);
+
+    fireEvent.click(screen.getByText('MC-002'));
+
+    expect(onAbrirDetalle).toHaveBeenCalledWith('v2');
+  });
+
+  it('tocar "Sin foto · Agregar" no abre el detalle del vehículo', () => {
+    const vehiculos: VehiculoItem[] = [
+      { id: 'v5', codigo: 'MC-005', marca: 'Renault', modelo: 'Clio', anio: 2008, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-14' },
+    ];
+    const onAbrirDetalle = vi.fn();
+
+    render(<VehiculosView vehiculos={vehiculos} onVolver={vi.fn()} onAbrirDetalle={onAbrirDetalle} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /sin foto · agregar/i }));
+
+    expect(onAbrirDetalle).not.toHaveBeenCalled();
+  });
+
   it('el botón "Cargar stock existente" abre el formulario con marca, modelo, año y costo', () => {
     render(<VehiculosView vehiculos={[]} onVolver={vi.fn()} />);
 

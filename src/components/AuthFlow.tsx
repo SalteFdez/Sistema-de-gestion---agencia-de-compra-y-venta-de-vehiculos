@@ -8,7 +8,8 @@ import { BalancesView } from './BalancesView';
 import { CuentasView } from './CuentasView';
 import { VehiculosView } from './VehiculosView';
 import { CompraVehiculoView } from './CompraVehiculoView';
-import type { VehiculosService, VehiculoItem } from '../lib/vehiculos/vehiculos-service';
+import type { VehiculosService, VehiculoItem, DetalleVehiculo } from '../lib/vehiculos/vehiculos-service';
+import { VehiculoDetalleView } from './VehiculoDetalleView';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
 
 export interface AuthFlowProps {
@@ -33,7 +34,34 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => inactivity.isUnlocked());
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar'>('home');
+  const [currentView, setCurrentView] = useState<
+    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle'
+  >('home');
+  const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
+  const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
+
+  const [idDetalle, setIdDetalle] = useState<string | null>(null);
+  const [detalleError, setDetalleError] = useState<boolean>(false);
+
+  const abrirDetalle = async (id: string) => {
+    if (!vehiculosService) return;
+    const item = vehiculos.find((v) => v.id === id);
+    setIdDetalle(id);
+    setDetalleVehiculo(null);
+    setDetalleError(false);
+    setFotoDetalle(item?.fotoUrl ?? null);
+    setCurrentView('vehiculo_detalle');
+    try {
+      const res = await vehiculosService.obtenerDetalle(id);
+      if (res.success && res.detalle) {
+        setDetalleVehiculo(res.detalle);
+      } else {
+        setDetalleError(true);
+      }
+    } catch {
+      setDetalleError(true);
+    }
+  };
   const [cuentas, setCuentas] = useState<CuentaItem[]>([]);
   const [totalDisponible, setTotalDisponible] = useState<number>(0);
   const [vehiculos, setVehiculos] = useState<VehiculoItem[]>([]);
@@ -277,15 +305,73 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
+    if (currentView === 'vehiculo_detalle' && detalleVehiculo) {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <VehiculoDetalleView
+            detalle={detalleVehiculo}
+            fotoUrl={fotoDetalle}
+            onVolver={() => setCurrentView('vehiculos')}
+          />
+        </main>
+      );
+    }
+
+    if (currentView === 'vehiculo_detalle') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <div className="w-full max-w-md mx-auto p-4">
+            <header className="flex justify-between items-center py-3 mb-4">
+              <h1 className="text-xl font-bold text-gray-900">Detalle del vehículo</h1>
+              <button
+                type="button"
+                onClick={() => setCurrentView('vehiculos')}
+                className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
+              >
+                Volver
+              </button>
+            </header>
+            {detalleError ? (
+              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                <p className="text-sm text-red-700 mb-3">No se pudo cargar el detalle del vehículo.</p>
+                <button
+                  type="button"
+                  onClick={() => idDetalle && void abrirDetalle(idDetalle)}
+                  className="py-2 px-4 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
+                >
+                  Reintentar
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Cargando el detalle…</p>
+            )}
+          </div>
+        </main>
+      );
+    }
+
     if (currentView === 'vehiculos') {
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <VehiculosView
             vehiculos={vehiculos}
             errorCarga={vehiculosError}
+            onAbrirDetalle={(id) => void abrirDetalle(id)}
             onReintentar={loadVehiculosData}
             onVolver={() => setCurrentView('home')}
-            onAgregarFoto={vehiculosService ? (id, foto) => vehiculosService.agregarFoto(id, foto) : undefined}
+            onAgregarFoto={
+              vehiculosService
+                ? async (id, foto) => {
+                    const res = await vehiculosService.agregarFoto(id, foto);
+                    if (res.success && res.fotoUrl) {
+                      const url = res.fotoUrl;
+                      // La foto queda en el listado de la pantalla, así sobrevive a abrir el detalle
+                      setVehiculos((prev) => prev.map((v) => (v.id === id ? { ...v, fotoUrl: url } : v)));
+                    }
+                    return res;
+                  }
+                : undefined
+            }
             comprimirFoto={comprimirFoto}
             onCargarStock={
               vehiculosService
