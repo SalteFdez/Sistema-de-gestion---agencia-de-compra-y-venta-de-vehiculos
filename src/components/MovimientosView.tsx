@@ -12,6 +12,8 @@ export interface MovimientosViewProps {
     movimiento: MovimientoItem,
     motivo: string
   ) => void | Promise<void | { success: boolean; error?: string }>;
+  /** Lleva al detalle del vehículo de una compra o de un cobro de venta */
+  onVerVehiculo?: (vehiculoId: string) => void;
   onVolver: () => void;
 }
 
@@ -55,6 +57,7 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
   hayMas = false,
   onVerMas,
   onAnular,
+  onVerVehiculo,
   onVolver,
 }) => {
   const [seleccionadoId, setSeleccionadoId] = useState<string | null>(null);
@@ -125,11 +128,14 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
               {seleccionadoId === m.id && !m.anulado && (
                 <div className="mt-3 pt-3 border-t border-gray-200 no-underline" onClick={(e) => e.stopPropagation()}>
                   {m.tipo === 'compra' || m.tipo === 'venta_cobro' ? (
-                    <p className="text-sm text-gray-700">
-                      {m.tipo === 'compra'
-                        ? `Es parte de la compra de ${m.vehiculoCodigo ?? ''}`
-                        : `Es parte de la venta de ${m.vehiculoCodigo ?? ''}`}
-                    </p>
+                    <button
+                      type="button"
+                      disabled={!m.vehiculoId}
+                      onClick={() => m.vehiculoId && onVerVehiculo?.(m.vehiculoId)}
+                      className="w-full py-2 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg"
+                    >
+                      Ver vehículo
+                    </button>
                   ) : (
                     <button
                       type="button"

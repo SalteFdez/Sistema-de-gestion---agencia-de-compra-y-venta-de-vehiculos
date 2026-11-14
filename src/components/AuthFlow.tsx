@@ -11,7 +11,7 @@ import { CompraVehiculoView } from './CompraVehiculoView';
 import { VenderVehiculoView } from './VenderVehiculoView';
 import { RegistrarGastoView, type CategoriaGasto } from './RegistrarGastoView';
 import { MovimientosView } from './MovimientosView';
-import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem } from '../lib/vehiculos/vehiculos-service';
+import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion } from '../lib/vehiculos/vehiculos-service';
 import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
@@ -46,6 +46,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
 
   const [idDetalle, setIdDetalle] = useState<string | null>(null);
   const [detalleError, setDetalleError] = useState<boolean>(false);
+  // Lo que se anula con la compra, para el aviso "¿Seguro?" del detalle
+  const [vistaPreviaDetalle, setVistaPreviaDetalle] = useState<VistaPreviaAnulacion | undefined>(undefined);
 
   const abrirDetalle = async (id: string) => {
     if (!vehiculosService) return;
@@ -53,12 +55,20 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     setIdDetalle(id);
     setDetalleVehiculo(null);
     setDetalleError(false);
+    setVistaPreviaDetalle(undefined);
     setFotoDetalle(item?.fotoUrl ?? null);
     setCurrentView('vehiculo_detalle');
     try {
       const res = await vehiculosService.obtenerDetalle(id);
       if (res.success && res.detalle) {
         setDetalleVehiculo(res.detalle);
+        if (res.detalle.estado !== 'vendido' && !res.detalle.anulado) {
+          try {
+            setVistaPreviaDetalle(await vehiculosService.vistaPreviaAnulacionVehiculo(id));
+          } catch {
+            // Sin vista previa, el aviso de anulación no lista los pagos ni los gastos
+          }
+        }
       } else {
         setDetalleError(true);
       }
@@ -349,6 +359,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
                   }
                 : undefined
             }
+            onVerVehiculo={(vehiculoId) => void abrirDetalle(vehiculoId)}
             onVolver={() => setCurrentView('home')}
           />
         </main>
@@ -466,6 +477,40 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               loadVehiculosData();
               setCurrentView('gasto');
             }}
+            vistaPrevia={vistaPreviaDetalle}
+            onAnularVehiculo={
+              vehiculosService
+                ? async (motivo) => {
+                    const res = await vehiculosService.anularVehiculo({
+                      vehiculoId: detalleVehiculo.id,
+                      estado: detalleVehiculo.estado,
+                      motivo,
+                    });
+                    if (res.success) {
+                      // El vehículo sale del listado: volvemos a Vehículos con los saldos al día
+                      await Promise.all([loadCuentasData(), loadVehiculosData(), loadMovimientos(0)]);
+                      setCurrentView('vehiculos');
+                    }
+                    return res;
+                  }
+                : undefined
+            }
+            onAnularVenta={
+              vehiculosService && detalleVehiculo.venta
+                ? async (motivo) => {
+                    const res = await vehiculosService.anularVenta({
+                      ventaId: detalleVehiculo.venta!.ventaId,
+                      motivo,
+                    });
+                    if (res.success) {
+                      // El vehículo vuelve a En stock: recargamos el detalle para que lo muestre
+                      await Promise.all([loadCuentasData(), loadVehiculosData(), loadMovimientos(0)]);
+                      await abrirDetalle(detalleVehiculo.id);
+                    }
+                    return res;
+                  }
+                : undefined
+            }
           />
         </main>
       );

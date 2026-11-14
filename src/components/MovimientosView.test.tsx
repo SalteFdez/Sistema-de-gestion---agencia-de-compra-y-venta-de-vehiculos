@@ -6,7 +6,7 @@ import type { MovimientoItem } from '../lib/vehiculos/vehiculos-service';
 
 const base: MovimientoItem = {
   id: 'm1', fecha: '2026-11-14', tipo: 'ingreso_otro', monto: 80000, descripcion: 'Comisión por intermediación',
-  cuentaNombre: 'Banco', vehiculoCodigo: null, categoriaNombre: 'Comisión', creadoPor: 'Lautaro',
+  cuentaNombre: 'Banco', vehiculoId: null, vehiculoCodigo: null, categoriaNombre: 'Comisión', creadoPor: 'Lautaro',
   anulado: false, anuladoPor: null, anuladoEl: null, motivoAnulacion: null, gastoId: null, ventaId: null,
 };
 
@@ -64,7 +64,22 @@ describe('MovimientosView', () => {
 
     fireEvent.click(screen.getByText('Compra MC-007'));
     expect(screen.queryByRole('button', { name: /anular/i })).not.toBeInTheDocument();
-    expect(screen.getByText('Es parte de la compra de MC-007')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ver vehículo/i })).toBeInTheDocument();
+  });
+
+  it('un movimiento de compra o de cobro de venta ofrece "Ver vehículo", que lleva a su detalle', () => {
+    const onVerVehiculo = vi.fn();
+    const compra: MovimientoItem = {
+      ...base, id: 'm11', tipo: 'compra', monto: -4500000, descripcion: 'Compra MC-007',
+      vehiculoCodigo: 'MC-007', vehiculoId: 'v7', categoriaNombre: null, gastoId: null,
+    };
+
+    render(<MovimientosView movimientos={[compra]} onVerVehiculo={onVerVehiculo} onVolver={vi.fn()} />);
+
+    fireEvent.click(screen.getByText('Compra MC-007'));
+    fireEvent.click(screen.getByRole('button', { name: /ver vehículo/i }));
+
+    expect(onVerVehiculo).toHaveBeenCalledWith('v7');
   });
 
   it('anular pide un motivo obligatorio y una confirmación que dice qué se anula', () => {

@@ -126,6 +126,7 @@ export interface MovimientoItem {
   monto: number;
   descripcion: string | null;
   cuentaNombre: string;
+  vehiculoId: string | null;
   vehiculoCodigo: string | null;
   categoriaNombre: string | null;
   creadoPor: string;
@@ -139,6 +140,35 @@ export interface MovimientoItem {
 }
 
 export const TAMANO_PAGINA_MOVIMIENTOS = 50;
+
+export interface AnularVentaParams {
+  ventaId: string;
+  motivo: string;
+}
+
+export interface AnularVentaResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface AnularVehiculoParams {
+  vehiculoId: string;
+  estado: VehiculoItem['estado'];
+  motivo: string;
+}
+
+export interface AnularVehiculoResult {
+  success: boolean;
+  error?: string;
+  gastosAnulados?: number;
+  totalGastos?: number;
+}
+
+export interface VistaPreviaAnulacion {
+  pagosCompra: PagoDetalle[];
+  gastosCantidad: number;
+  gastosTotal: number;
+}
 
 export interface AnularMovimientoParams {
   movimientoId: string;
@@ -246,6 +276,8 @@ export interface DetalleVehiculo {
   pagos: PagoDetalle[];
   venta: VentaDetalle | null;
   gastos: GastoDetalle[];
+  /** Presente solo si el vehículo fue anulado (se llega desde el historial) */
+  anulado?: { por: string | null; motivo: string | null; el: string | null } | null;
 }
 
 export interface ObtenerDetalleResult {
@@ -347,7 +379,7 @@ export class VehiculosService {
     const { data, error } = await this.db
       .from('movimientos')
       .select(
-        'id, fecha, tipo, monto, descripcion, anulado, anulado_at, motivo_anulacion, gasto_id, venta_id, ' +
+        'id, fecha, tipo, monto, descripcion, anulado, anulado_at, motivo_anulacion, gasto_id, venta_id, vehiculo_id, ' +
           'cuenta:cuentas(nombre), vehiculo:vehiculos(codigo), categoria:categorias(nombre), ' +
           'creador:usuarios!created_by(nombre), anulador:usuarios!anulado_por(nombre)'
       )
@@ -367,6 +399,7 @@ export class VehiculosService {
       motivo_anulacion: string | null;
       gasto_id: string | null;
       venta_id: string | null;
+      vehiculo_id: string | null;
       cuenta: { nombre: string } | null;
       vehiculo: { codigo: string } | null;
       categoria: { nombre: string } | null;
@@ -381,6 +414,7 @@ export class VehiculosService {
       monto: Number(f.monto) || 0,
       descripcion: f.descripcion ?? null,
       cuentaNombre: f.cuenta?.nombre ?? '',
+      vehiculoId: f.vehiculo_id ?? null,
       vehiculoCodigo: f.vehiculo?.codigo ?? null,
       categoriaNombre: f.categoria?.nombre ?? null,
       creadoPor: f.creador?.nombre ?? '',
@@ -391,6 +425,81 @@ export class VehiculosService {
       gastoId: f.gasto_id ?? null,
       ventaId: f.venta_id ?? null,
     }));
+  }
+
+  async anularVenta(params: AnularVentaParams): Promise<AnularVentaResult> {
+    if (!params.motivo?.trim()) {
+      return { success: false, error: 'El motivo es obligatorio' };
+    }
+    let error: { message: string } | null;
+    try {
+      ({ error } = await this.db.rpc('anular_venta', { p_venta_id: params.ventaId, p_motivo: params.motivo.trim() }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se anuló: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message || 'No se pudo anular la venta'}. No se anuló nada.` };
+    }
+    return { success: true };
+  }
+
+  async anularVehiculo(params: AnularVehiculoParams): Promise<AnularVehiculoResult> {
+    if (!params.motivo?.trim()) {
+      return { success: false, error: 'El motivo es obligatorio' };
+    }
+    if (params.estado === 'vendido') {
+      return { success: false, error: 'Primero anulá la venta de este vehículo' };
+    }
+    const motivo = params.motivo.trim();
+    let data: unknown;
+    let error: { message: string } | null;
+    try {
+      ({ data, error } = await this.db.rpc('anular_vehiculo', { p_vehiculo_id: params.vehiculoId, p_motivo: motivo }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se anuló: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message || 'No se pudo anular el vehículo'}. No se anuló nada.` };
+    }
+    const fila = data as { gastos_anulados: number; total_gastos: number | string };
+    return {
+      success: true,
+      gastosAnulados: Number(fila.gastos_anulados) || 0,
+      totalGastos: Number(fila.total_gastos) || 0,
+    };
+  }
+
+  /** Lo que se va a anular con un vehículo, para mostrarlo en el aviso antes de confirmar. */
+  async vistaPreviaAnulacionVehiculo(vehiculoId: string): Promise<VistaPreviaAnulacion> {
+    const { data: pagos } = await this.db
+      .from('movimientos')
+      .select('monto, cuenta:cuentas(nombre)')
+      .eq('vehiculo_id', vehiculoId)
+      .eq('tipo', 'compra')
+      .eq('anulado', false);
+    const filasPago = (Array.isArray(pagos) ? pagos : []) as Array<{
+      monto: number | string;
+      cuenta: { nombre: string } | null;
+    }>;
+
+    const { data: asignaciones } = await this.db
+      .from('asignaciones_gasto')
+      .select('monto, gasto:gastos(anulado)')
+      .eq('vehiculo_id', vehiculoId);
+    const filasGasto = (Array.isArray(asignaciones) ? asignaciones : []) as Array<{
+      monto: number | string;
+      gasto: { anulado: boolean } | null;
+    }>;
+    const vigentes = filasGasto.filter((a) => a.gasto !== null && a.gasto.anulado === false);
+
+    return {
+      pagosCompra: filasPago.map((p) => ({
+        cuentaNombre: p.cuenta?.nombre ?? '',
+        monto: Math.abs(Number(p.monto)) || 0,
+      })),
+      gastosCantidad: vigentes.length,
+      gastosTotal: vigentes.reduce((acc, a) => acc + (Math.abs(Number(a.monto)) || 0), 0),
+    };
   }
 
   async anularMovimiento(params: AnularMovimientoParams): Promise<AnularMovimientoResult> {
@@ -566,7 +675,7 @@ export class VehiculosService {
   async obtenerDetalle(id: string): Promise<ObtenerDetalleResult> {
     const { data, error } = await this.db
       .from('vehiculos')
-      .select('*')
+      .select('*, anulador:usuarios!anulado_por(nombre)')
       .eq('id', id)
       .maybeSingle();
     if (error) {
@@ -689,6 +798,13 @@ export class VehiculosService {
         pagos,
         venta,
         gastos,
+        anulado: fila.anulado === true
+          ? {
+              por: ((fila.anulador as { nombre: string } | null)?.nombre) ?? null,
+              motivo: (fila.motivo_anulacion as string | null) ?? null,
+              el: (fila.anulado_at as string | null) ?? null,
+            }
+          : null,
       },
     };
   }
@@ -713,7 +829,9 @@ export class VehiculosService {
     if (error) {
       throw new Error(error.message);
     }
-    const filas = (data ?? []) as Array<Record<string, unknown> & { foto_url?: string | null }>;
+    // Los vehículos anulados no se listan (ni se pueden vender ni cargar gastos)
+    const filas = ((data ?? []) as Array<Record<string, unknown> & { foto_url?: string | null; anulado?: boolean }>)
+      .filter((f) => f.anulado !== true);
 
     const rutas = filas.map((f) => f.foto_url).filter((r): r is string => Boolean(r));
     let urlPorRuta = new Map<string, string>();

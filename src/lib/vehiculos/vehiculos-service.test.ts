@@ -755,6 +755,117 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('vistaPreviaAnulacionVehiculo', () => {
+    it('lista los pagos de la compra por cuenta y la cantidad y total de gastos vigentes', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          return {
+            select: vi.fn().mockReturnValue(
+              consulta({
+                data: [
+                  { monto: -3000000, cuenta: { nombre: 'Caja efectivo' } },
+                  { monto: -1500000, cuenta: { nombre: 'Banco' } },
+                ],
+                error: null,
+              })
+            ),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnValue(
+            consulta({
+              data: [
+                { monto: 250000, gasto: { anulado: false } },
+                { monto: 80000, gasto: { anulado: false } },
+                { monto: 50000, gasto: { anulado: true } },
+              ],
+              error: null,
+            })
+          ),
+        };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const vista = await service.vistaPreviaAnulacionVehiculo('v1');
+
+      expect(vista.pagosCompra).toEqual([
+        { cuentaNombre: 'Caja efectivo', monto: 3000000 },
+        { cuentaNombre: 'Banco', monto: 1500000 },
+      ]);
+      expect(vista.gastosCantidad).toBe(2);
+      expect(vista.gastosTotal).toBe(330000);
+    });
+  });
+
+  describe('anularVehiculo', () => {
+    it('no anula sin motivo, ni un vehículo vendido, y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const sinMotivo = await service.anularVehiculo({ vehiculoId: 'v1', estado: 'en_stock', motivo: ' ' });
+      const vendido = await service.anularVehiculo({ vehiculoId: 'v1', estado: 'vendido', motivo: 'x' });
+
+      expect(sinMotivo.error).toMatch(/motivo.*obligatorio/i);
+      expect(vendido.error).toMatch(/primero anulá la venta/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('anula con la RPC anular_vehiculo y devuelve los gastos anulados en cascada', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: { vehiculo_id: 'v1', codigo: 'MC-007', gastos_anulados: 2, total_gastos: 330000 },
+        error: null,
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.anularVehiculo({ vehiculoId: 'v1', estado: 'en_stock', motivo: 'compra mal cargada' });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('anular_vehiculo', { p_vehiculo_id: 'v1', p_motivo: 'compra mal cargada' });
+      expect(res.success).toBe(true);
+      expect(res.gastosAnulados).toBe(2);
+      expect(res.totalGastos).toBe(330000);
+    });
+  });
+
+  describe('listarVehiculos sin anulados', () => {
+    it('no trae los vehículos anulados', async () => {
+      const order = vi.fn().mockResolvedValue({
+        data: [
+          { id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, estado: 'en_stock', foto_url: null, fecha_ingreso: '2026-11-13', anulado: false },
+          { id: 'v2', codigo: 'MC-002', marca: 'Ford', modelo: 'Ka', anio: 2012, color: null, estado: 'en_stock', foto_url: null, fecha_ingreso: '2026-11-13', anulado: true },
+        ],
+        error: null,
+      });
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ order }) });
+
+      const service = new VehiculosService(mockDb);
+      const lista = await service.listarVehiculos();
+
+      expect(lista.map((v) => v.codigo)).toEqual(['MC-001']);
+    });
+  });
+
+  describe('anularVenta', () => {
+    it('sin motivo no anula y no llama a la RPC; con motivo llama a anular_venta', async () => {
+      const service = new VehiculosService(mockDb);
+      const sinMotivo = await service.anularVenta({ ventaId: 'ven1', motivo: '' });
+
+      expect(sinMotivo.error).toMatch(/motivo.*obligatorio/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { venta_id: 'ven1', codigo: 'MC-007' }, error: null });
+      const res = await service.anularVenta({ ventaId: 'ven1', motivo: 'precio mal cargado' });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('anular_venta', { p_venta_id: 'ven1', p_motivo: 'precio mal cargado' });
+      expect(res.success).toBe(true);
+    });
+  });
+
   describe('anularMovimiento', () => {
     it('no anula si el motivo está vacío y no llama a la RPC', async () => {
       const service = new VehiculosService(mockDb);
@@ -1132,6 +1243,121 @@ describe('VehiculosService', () => {
           costoReal: 3000000,
         })
       );
+    });
+
+    it('un vehículo anulado trae quién lo anuló, cuándo y el motivo', async () => {
+      const filaVehiculo = {
+        id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+        estado: 'en_stock', origen: 'compra', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 3000000,
+        anulado: true, anulado_at: '2026-11-14T15:30:00+00:00', motivo_anulacion: 'compra mal cargada',
+        anulador: { nombre: 'Antonio' },
+      };
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: [], error: null })) };
+        }
+        const fila = tabla === 'v_costo_vehiculo' ? { vehiculo_id: 'v1', valor_ingreso: 3000000, gastos_asignados: 0, costo_real: 3000000 } : filaVehiculo;
+        return { select: vi.fn().mockReturnValue(consulta({ data: fila, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v1');
+
+      expect(res.detalle?.anulado).toEqual({
+        por: 'Antonio',
+        motivo: 'compra mal cargada',
+        el: '2026-11-14T15:30:00+00:00',
+      });
+    });
+
+    it('un vehículo sin anular no trae datos de anulación', async () => {
+      const filaVehiculo = {
+        id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+        estado: 'en_stock', origen: 'compra', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 3000000,
+        anulado: false, anulado_at: null, motivo_anulacion: null, anulador: null,
+      };
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: [], error: null })) };
+        }
+        const fila = tabla === 'v_costo_vehiculo' ? { vehiculo_id: 'v1', valor_ingreso: 3000000, gastos_asignados: 0, costo_real: 3000000 } : filaVehiculo;
+        return { select: vi.fn().mockReturnValue(consulta({ data: fila, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v1');
+
+      expect(res.detalle?.anulado).toBeNull();
+    });
+
+    it('una venta anulada no aparece como venta vigente en el detalle', async () => {
+      const filaVehiculo = {
+        id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+        estado: 'vendido', origen: 'compra', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 3000000,
+        anulado: false, anulado_at: null, motivo_anulacion: null, anulador: null,
+      };
+      // Fake de la tabla ventas: solo devuelve la venta si la consulta pide las no anuladas
+      const ventaAnulada = { id: 'ven1', comprador_texto: 'Pedro', fecha: '2026-11-14', precio_total: 6000000, anulada: true };
+      const consultaVentas = (filtros: Array<[string, unknown]>) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn((col: string, val: unknown) => {
+            filtros.push([col, val]);
+            return b;
+          }),
+          maybeSingle: vi.fn(() => {
+            const pideVigentes = filtros.some(([c, v]) => c === 'anulada' && v === false);
+            const fila = pideVigentes && ventaAnulada.anulada ? null : ventaAnulada;
+            return Promise.resolve({ data: fila, error: null });
+          }),
+        };
+        return b;
+      };
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: [], error: null })) };
+        }
+        if (tabla === 'ventas') {
+          const filtros: Array<[string, unknown]> = [];
+          return { select: vi.fn().mockReturnValue(consultaVentas(filtros)) };
+        }
+        const fila = tabla === 'v_costo_vehiculo'
+          ? { vehiculo_id: 'v1', valor_ingreso: 3000000, gastos_asignados: 0, costo_real: 3000000 }
+          : filaVehiculo;
+        return { select: vi.fn().mockReturnValue(consulta({ data: fila, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v1');
+
+      expect(res.success).toBe(true);
+      expect(res.detalle?.venta).toBeNull();
     });
   });
 

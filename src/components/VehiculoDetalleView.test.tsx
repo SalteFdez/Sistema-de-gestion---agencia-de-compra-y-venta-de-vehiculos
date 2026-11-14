@@ -185,6 +185,109 @@ describe('VehiculoDetalleView', () => {
     expect(onAgregarGasto).toHaveBeenCalledTimes(1);
   });
 
+  it('el detalle ofrece "Anular compra" si no está vendido, "Anular alta" si es stock existente y "Anular venta" si está vendido', () => {
+    const onAnularVehiculo = vi.fn();
+    const onAnularVenta = vi.fn();
+    const { rerender } = render(
+      <VehiculoDetalleView detalle={detalleBase} fotoUrl={null} onVolver={vi.fn()} onAnularVehiculo={onAnularVehiculo} onAnularVenta={onAnularVenta} />
+    );
+    expect(screen.getByRole('button', { name: 'Anular compra' })).toBeInTheDocument();
+
+    rerender(
+      <VehiculoDetalleView
+        detalle={{ ...detalleBase, origen: 'inventario_inicial' }}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+        onAnularVehiculo={onAnularVehiculo}
+        onAnularVenta={onAnularVenta}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Anular alta' })).toBeInTheDocument();
+
+    rerender(
+      <VehiculoDetalleView
+        detalle={{ ...detalleBase, estado: 'vendido', venta: { ventaId: 'ven1', fecha: '2026-11-14', comprador: null, precioVenta: 6000000, ganancia: 0, cobros: [] } }}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+        onAnularVehiculo={onAnularVehiculo}
+        onAnularVenta={onAnularVenta}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Anular venta' }));
+    const dialogo = screen.getByRole('dialog');
+    fireEvent.change(within(dialogo).getByLabelText(/motivo/i), { target: { value: 'precio mal cargado' } });
+    fireEvent.click(within(dialogo).getByRole('button', { name: /sí, anular/i }));
+    expect(onAnularVenta).toHaveBeenCalledWith('precio mal cargado');
+    expect(screen.queryByRole('button', { name: 'Anular compra' })).not.toBeInTheDocument();
+  });
+
+  it('anular la compra pide motivo y muestra el aviso con pagos por cuenta y gastos en cascada', () => {
+    const onAnularVehiculo = vi.fn();
+    render(
+      <VehiculoDetalleView
+        detalle={{ ...detalleBase, valorIngreso: 4500000, costoReal: 4830000 }}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+        onAnularVehiculo={onAnularVehiculo}
+        vistaPrevia={{
+          pagosCompra: [
+            { cuentaNombre: 'Caja efectivo', monto: 3000000 },
+            { cuentaNombre: 'Banco', monto: 1500000 },
+          ],
+          gastosCantidad: 2,
+          gastosTotal: 330000,
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Anular compra' }));
+
+    const dialogo = screen.getByRole('dialog');
+    expect(dialogo).toHaveTextContent('Vas a anular la compra de MC-002 por $ 4.500.000');
+    expect(dialogo).toHaveTextContent('vuelven $ 3.000.000 a Caja efectivo y $ 1.500.000 a Banco');
+    expect(dialogo).toHaveTextContent('Se van a anular también 2 gastos por $ 330.000');
+
+    const confirmar = within(dialogo).getByRole('button', { name: /anular/i });
+    expect(confirmar).toBeDisabled();
+    fireEvent.change(within(dialogo).getByLabelText(/motivo/i), { target: { value: 'compra mal cargada' } });
+    fireEvent.click(confirmar);
+
+    expect(onAnularVehiculo).toHaveBeenCalledWith('compra mal cargada');
+  });
+
+  it('si la anulación falla, muestra el error y deja el diálogo abierto con el motivo', async () => {
+    const onAnularVehiculo = vi.fn().mockResolvedValue({ success: false, error: 'Sin conexión. No se pudo confirmar si se anuló' });
+    render(<VehiculoDetalleView detalle={detalleBase} fotoUrl={null} onVolver={vi.fn()} onAnularVehiculo={onAnularVehiculo} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Anular compra' }));
+    const dialogo = screen.getByRole('dialog');
+    fireEvent.change(within(dialogo).getByLabelText(/motivo/i), { target: { value: 'compra mal cargada' } });
+    fireEvent.click(within(dialogo).getByRole('button', { name: /sí, anular/i }));
+
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(/no se pudo confirmar/i);
+    expect(within(screen.getByRole('dialog')).getByLabelText(/motivo/i)).toHaveValue('compra mal cargada');
+  });
+
+  it('un vehículo anulado muestra quién lo anuló y por qué, sin ninguna acción', () => {
+    render(
+      <VehiculoDetalleView
+        detalle={{
+          ...detalleBase,
+          anulado: { por: 'Antonio', motivo: 'compra mal cargada', el: '2026-11-14T15:30:00+00:00' },
+        }}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+        onAnularVehiculo={vi.fn()}
+        onAgregarGasto={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Anulado por Antonio el 14\/11/)).toBeInTheDocument();
+    expect(screen.getByText(/compra mal cargada/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /anular/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /agregar gasto/i })).not.toBeInTheDocument();
+  });
+
   it('un vehículo de stock existente dice que no tiene pagos registrados', () => {
     render(
       <VehiculoDetalleView

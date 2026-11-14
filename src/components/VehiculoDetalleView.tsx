@@ -1,5 +1,5 @@
-import React from 'react';
-import type { DetalleVehiculo } from '../lib/vehiculos/vehiculos-service';
+import React, { useState } from 'react';
+import type { DetalleVehiculo, VistaPreviaAnulacion } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
 
 export interface VehiculoDetalleViewProps {
@@ -7,6 +7,10 @@ export interface VehiculoDetalleViewProps {
   fotoUrl: string | null;
   onVolver: () => void;
   onAgregarGasto?: () => void;
+  /** Lo que se anula con la compra, para el aviso "¿Seguro?" antes de confirmar */
+  vistaPrevia?: VistaPreviaAnulacion;
+  onAnularVehiculo?: (motivo: string) => void | Promise<void | { success: boolean; error?: string }>;
+  onAnularVenta?: (motivo: string) => void | Promise<void | { success: boolean; error?: string }>;
 }
 
 const ETIQUETA_ESTADO: Record<DetalleVehiculo['estado'], string> = {
@@ -24,6 +28,18 @@ const ETIQUETA_ORIGEN: Record<DetalleVehiculo['origen'], string> = {
 // Pérdida con el signo menos típico: "$ −200.000"
 const formatoNegativo = (n: number): string => `$ −${formatMoney(Math.abs(n)).replace('$ ', '')}`;
 
+// Día y mes de un timestamp en hora de Buenos Aires: "14/11"
+const diaMesBA = (iso: string): string => {
+  const partes = new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires',
+  }).formatToParts(new Date(iso));
+  const dia = partes.find((p) => p.type === 'day')?.value ?? '';
+  const mes = partes.find((p) => p.type === 'month')?.value ?? '';
+  return `${dia}/${mes}`;
+};
+
 // "2026-11-14" -> "14/11/2026" (sin pasar por Date, para no desfasar la fecha por zona horaria)
 const formatoFecha = (iso: string): string => {
   const [anio, mes, dia] = iso.split('-');
@@ -35,7 +51,43 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   fotoUrl,
   onVolver,
   onAgregarGasto,
+  vistaPrevia,
+  onAnularVehiculo,
+  onAnularVenta,
 }) => {
+  const [aAnular, setAAnular] = useState<'vehiculo' | 'venta' | null>(null);
+  const [motivo, setMotivo] = useState<string>('');
+  const [errorAnular, setErrorAnular] = useState<string | null>(null);
+
+  const textoAviso = (): string[] => {
+    if (aAnular === 'venta' && detalle.venta) {
+      const cobros = detalle.venta.cobros.map((c) => `${formatMoney(c.monto)} de ${c.cuentaNombre}`).join(' y ');
+      return [`Vas a anular la venta de ${detalle.codigo} por ${formatMoney(detalle.venta.precioVenta)}; salen ${cobros}`];
+    }
+    const lineas = [
+      `Vas a anular ${detalle.origen === 'inventario_inicial' ? 'el alta' : 'la compra'} de ${detalle.codigo} por ${formatMoney(detalle.valorIngreso)}`,
+    ];
+    if (vistaPrevia && vistaPrevia.pagosCompra.length > 0) {
+      lineas[0] += `; vuelven ${vistaPrevia.pagosCompra.map((p) => `${formatMoney(p.monto)} a ${p.cuentaNombre}`).join(' y ')}`;
+    }
+    if (vistaPrevia && vistaPrevia.gastosCantidad > 0) {
+      const n = vistaPrevia.gastosCantidad;
+      lineas.push(`Se van a anular también ${n} ${n === 1 ? 'gasto' : 'gastos'} por ${formatMoney(vistaPrevia.gastosTotal)}`);
+    }
+    return lineas;
+  };
+
+  const confirmarAnulacion = async () => {
+    const accion = aAnular === 'venta' ? onAnularVenta : onAnularVehiculo;
+    const res = (await accion?.(motivo.trim())) as { success: boolean; error?: string } | void;
+    if (res && !res.success) {
+      // Nada quedó anulado: el diálogo sigue abierto con el motivo para reintentar
+      setErrorAnular(res.error ?? 'No se pudo anular. No se anuló nada.');
+      return;
+    }
+    setErrorAnular(null);
+    setAAnular(null);
+  };
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
       <header className="flex justify-between items-center py-3 mb-4">
@@ -48,6 +100,14 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
           Volver
         </button>
       </header>
+
+      {detalle.anulado && (
+        <p role="status" className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
+          Anulado por {detalle.anulado.por}
+          {detalle.anulado.el ? ` el ${diaMesBA(detalle.anulado.el)}` : ''}
+          {detalle.anulado.motivo ? ` · Motivo: ${detalle.anulado.motivo}` : ''}
+        </p>
+      )}
 
       <article className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
         {fotoUrl ? (
@@ -137,7 +197,35 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             <p className="text-xs text-gray-500 mt-1">Todavía no hay gastos cargados</p>
           )
         )}
-        {onAgregarGasto && (
+        {detalle.anulado ? null : detalle.estado === 'vendido' ? (
+          onAnularVenta && (
+            <button
+              type="button"
+              onClick={() => {
+                setMotivo('');
+                setAAnular('venta');
+              }}
+              className="w-full mt-2 py-2 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
+            >
+              Anular venta
+            </button>
+          )
+        ) : (
+          onAnularVehiculo && (
+            <button
+              type="button"
+              onClick={() => {
+                setMotivo('');
+                setAAnular('vehiculo');
+              }}
+              className="w-full mt-2 py-2 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
+            >
+              {detalle.origen === 'inventario_inicial' ? 'Anular alta' : 'Anular compra'}
+            </button>
+          )
+        )}
+
+        {onAgregarGasto && !detalle.anulado && (
           <button
             type="button"
             onClick={onAgregarGasto}
@@ -192,6 +280,50 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             <p className="text-lg font-bold text-green-700 mt-3">Ganancia {formatMoney(detalle.venta.ganancia)}</p>
           )}
         </section>
+      )}
+
+      {aAnular && (
+        <div role="dialog" aria-modal="true" className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+          {textoAviso().map((l, i) => (
+            <p key={i} className="text-sm text-red-900">
+              {l}
+            </p>
+          ))}
+          <div>
+            <label htmlFor="anular-vehiculo-motivo" className="block text-xs font-semibold text-gray-700 mb-1">
+              Motivo (obligatorio)
+            </label>
+            <input
+              id="anular-vehiculo-motivo"
+              type="text"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAAnular(null)}
+              className="flex-1 py-2 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg"
+            >
+              Volver
+            </button>
+            <button
+              type="button"
+              disabled={motivo.trim() === ''}
+              onClick={() => void confirmarAnulacion()}
+              className="flex-1 py-2 bg-red-600 disabled:bg-gray-300 text-white text-sm rounded-lg"
+            >
+              Sí, anular
+            </button>
+          </div>
+          {errorAnular && (
+            <p role="alert" className="text-sm text-red-700">
+              {errorAnular}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
