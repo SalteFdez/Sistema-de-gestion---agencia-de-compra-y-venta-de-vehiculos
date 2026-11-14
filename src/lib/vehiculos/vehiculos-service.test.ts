@@ -287,6 +287,59 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('agregarFoto', () => {
+    it('sube la foto del vehículo, guarda la ruta y devuelve la URL firmada', async () => {
+      const updateEq = vi.fn().mockResolvedValue({ error: null });
+      const update = vi.fn().mockReturnValue({ eq: updateEq });
+      mockDb.from = vi.fn().mockReturnValue({ update });
+
+      const upload = vi.fn().mockResolvedValue({ error: null });
+      const createSignedUrls = vi.fn().mockResolvedValue({
+        data: [{ path: 'v7/x.jpg', signedUrl: 'https://storage.test/v7' }],
+        error: null,
+      });
+      const storage = { from: vi.fn().mockReturnValue({ upload, createSignedUrls }) };
+
+      const service = new VehiculosService(mockDb, storage);
+      const foto = new Blob(['jpeg'], { type: 'image/jpeg' });
+      const res = await service.agregarFoto('v7', foto);
+
+      expect(res.success).toBe(true);
+      const [pathSubido] = upload.mock.calls[0];
+      expect(pathSubido).toMatch(/^v7\/.+\.jpg$/);
+      expect(update).toHaveBeenCalledWith({ foto_url: pathSubido });
+      expect(updateEq).toHaveBeenCalledWith('id', 'v7');
+      expect(res.fotoUrl).toBe('https://storage.test/v7');
+    });
+
+    it('si la subida falla, devuelve error para reintentar y no toca la fila', async () => {
+      const update = vi.fn();
+      mockDb.from = vi.fn().mockReturnValue({ update });
+
+      const upload = vi.fn().mockResolvedValue({ error: { message: 'Network error' } });
+      const storage = { from: vi.fn().mockReturnValue({ upload, createSignedUrls: vi.fn() }) };
+
+      const service = new VehiculosService(mockDb, storage);
+      const res = await service.agregarFoto('v8', new Blob(['jpeg'], { type: 'image/jpeg' }));
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/no se pudo subir la foto.*intentar de nuevo/i);
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('obtenerInventario (errores)', () => {
+    it('si la consulta falla, da error en lugar de mostrar inventario en cero', async () => {
+      const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+      const select = vi.fn().mockReturnValue({ maybeSingle });
+      mockDb.from = vi.fn().mockReturnValue({ select });
+
+      const service = new VehiculosService(mockDb);
+
+      await expect(service.obtenerInventario()).rejects.toThrow(/failed to fetch/i);
+    });
+  });
+
   describe('listarVehiculos', () => {
     it('devuelve una lista vacía si no hay vehículos cargados', async () => {
       const order = vi.fn().mockResolvedValue({ data: [], error: null });
@@ -347,6 +400,30 @@ describe('VehiculosService', () => {
 
       expect(createSignedUrls).toHaveBeenCalledWith(['v1/a.jpg'], 3600);
       expect(lista[1].fotoUrl).toBeNull();
+    });
+
+    it('si la consulta falla, da error en lugar de mostrar una lista vacía', async () => {
+      const order = vi.fn().mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+      const select = vi.fn().mockReturnValue({ order });
+      mockDb.from = vi.fn().mockReturnValue({ select });
+
+      const service = new VehiculosService(mockDb);
+
+      await expect(service.listarVehiculos()).rejects.toThrow(/failed to fetch/i);
+    });
+
+    it('mapea fecha_ingreso a fechaIngreso en cada vehículo', async () => {
+      const filas = [
+        { id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, estado: 'en_stock', foto_url: null, fecha_ingreso: '2026-11-13' },
+      ];
+      const order = vi.fn().mockResolvedValue({ data: filas, error: null });
+      const select = vi.fn().mockReturnValue({ order });
+      mockDb.from = vi.fn().mockReturnValue({ select });
+
+      const service = new VehiculosService(mockDb);
+      const lista = await service.listarVehiculos();
+
+      expect(lista[0].fechaIngreso).toBe('2026-11-13');
     });
 
     it('pide el listado ordenado por fecha de carga, los más nuevos primero', async () => {

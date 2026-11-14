@@ -17,3 +17,6 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+
+# Supabase CLI: estado local (proyecto enlazado, versiones)
+supabase/.temp/

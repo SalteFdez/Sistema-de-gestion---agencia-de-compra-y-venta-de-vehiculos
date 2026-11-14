@@ -1,11 +1,20 @@
-import React, { useState } from 'react';
-import type { VehiculoItem, CargarStockParams, CargarStockResult } from '../lib/vehiculos/vehiculos-service';
+import React, { useRef, useState } from 'react';
+import type {
+  VehiculoItem,
+  CargarStockParams,
+  CargarStockResult,
+  AgregarFotoResult,
+} from '../lib/vehiculos/vehiculos-service';
+import { comprimirFotoEnNavegador } from '../lib/vehiculos/comprimir-foto';
 import { CargarStockForm } from './CargarStockForm';
 
 export interface VehiculosViewProps {
   vehiculos: VehiculoItem[];
+  errorCarga?: boolean;
+  onReintentar?: () => void;
   onVolver: () => void;
   onCargarStock?: (params: CargarStockParams) => Promise<CargarStockResult>;
+  onAgregarFoto?: (id: string, foto: Blob) => Promise<AgregarFotoResult>;
   comprimirFoto?: (foto: Blob) => Promise<Blob>;
 }
 
@@ -15,8 +24,37 @@ const ETIQUETA_ESTADO: Record<VehiculoItem['estado'], string> = {
   vendido: 'Vendido',
 };
 
-export const VehiculosView: React.FC<VehiculosViewProps> = ({ vehiculos, onVolver, onCargarStock, comprimirFoto }) => {
+export const VehiculosView: React.FC<VehiculosViewProps> = ({
+  vehiculos,
+  errorCarga = false,
+  onReintentar,
+  onVolver,
+  onCargarStock,
+  onAgregarFoto,
+  comprimirFoto = comprimirFotoEnNavegador,
+}) => {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  // Fotos agregadas desde el listado, por id de vehículo (se muestran sin recargar la lista)
+  const [fotosNuevas, setFotosNuevas] = useState<Record<string, string>>({});
+  const [erroresFoto, setErroresFoto] = useState<Record<string, string>>({});
+  const inputsFoto = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const agregarFoto = async (v: VehiculoItem, archivo: File) => {
+    if (!onAgregarFoto) return;
+    try {
+      const comprimida = await comprimirFoto(archivo);
+      const res = await onAgregarFoto(v.id, comprimida);
+      if (res.success && res.fotoUrl) {
+        const url = res.fotoUrl;
+        setFotosNuevas((prev) => ({ ...prev, [v.id]: url }));
+        setErroresFoto((prev) => ({ ...prev, [v.id]: '' }));
+      } else {
+        setErroresFoto((prev) => ({ ...prev, [v.id]: res.error ?? 'No se pudo guardar la foto. Podés intentar de nuevo.' }));
+      }
+    } catch {
+      setErroresFoto((prev) => ({ ...prev, [v.id]: 'No se pudo preparar la foto. Podés intentar de nuevo.' }));
+    }
+  };
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
@@ -49,31 +87,72 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({ vehiculos, onVolve
         )}
       </div>
 
+      {errorCarga && (
+        <div role="alert" className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+          <p className="text-sm text-red-700 mb-3">No se pudieron cargar los vehículos.</p>
+          <button
+            type="button"
+            onClick={onReintentar}
+            className="py-2 px-4 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
       <div className="space-y-3">
-        {vehiculos.map((v) => (
-          <article key={v.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-            {v.fotoUrl ? (
-              <img src={v.fotoUrl} alt={`${v.marca} ${v.modelo}`} className="w-full h-48 object-cover" />
-            ) : (
-              <div className="w-full h-48 flex items-center justify-center bg-gray-100 text-sm text-gray-500">
-                Sin foto
+        {vehiculos.map((v) => {
+          const fotoMostrada = fotosNuevas[v.id] ?? v.fotoUrl;
+          return (
+            <article key={v.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+              {fotoMostrada ? (
+                <img src={fotoMostrada} alt={`${v.marca} ${v.modelo}`} className="w-full h-48 object-cover" />
+              ) : (
+                <div className="w-full h-48 flex flex-col items-center justify-center gap-2 bg-gray-100 px-4">
+                  <button
+                    type="button"
+                    onClick={() => inputsFoto.current[v.id]?.click()}
+                    className="py-2 px-4 bg-white border border-gray-300 text-sm text-gray-700 rounded-lg"
+                  >
+                    Sin foto · Agregar
+                  </button>
+                  {erroresFoto[v.id] && (
+                    <p role="alert" className="text-xs text-red-700 text-center">
+                      {erroresFoto[v.id]}
+                    </p>
+                  )}
+                  <input
+                    ref={(el) => {
+                      inputsFoto.current[v.id] = el;
+                    }}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    aria-label={`Elegir foto de ${v.codigo}`}
+                    className="hidden"
+                    onChange={(e) => {
+                      const archivo = e.target.files?.[0];
+                      if (archivo) void agregarFoto(v, archivo);
+                    }}
+                  />
+                </div>
+              )}
+              <div className="p-4">
+                <span className="text-xs font-bold text-blue-700">{v.codigo}</span>
+                <h2 className="text-base font-semibold text-gray-900">
+                  {v.marca} {v.modelo}
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {v.anio}
+                  {v.color ? ` · ${v.color}` : ''}
+                </p>
+                <span className="inline-block mt-2 text-xs font-medium text-green-700 bg-green-50 rounded px-2 py-0.5">
+                  {ETIQUETA_ESTADO[v.estado]}
+                </span>
               </div>
-            )}
-            <div className="p-4">
-              <span className="text-xs font-bold text-blue-700">{v.codigo}</span>
-              <h2 className="text-base font-semibold text-gray-900">
-                {v.marca} {v.modelo}
-              </h2>
-              <p className="text-sm text-gray-600">
-                {v.anio}
-                {v.color ? ` · ${v.color}` : ''}
-              </p>
-              <span className="inline-block mt-2 text-xs font-medium text-green-700 bg-green-50 rounded px-2 py-0.5">
-                {ETIQUETA_ESTADO[v.estado]}
-              </span>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </div>
   );

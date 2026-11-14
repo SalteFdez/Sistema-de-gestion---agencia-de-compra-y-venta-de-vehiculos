@@ -6,6 +6,7 @@ export interface BalancesViewProps {
   totalDisponible: number;
   cuentas: CuentaItem[];
   inventario?: { total: number; cantidad: number };
+  errorInventario?: boolean;
   onVolver: () => void;
   onIrACuentas: () => void;
 }
@@ -14,6 +15,7 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
   totalDisponible,
   cuentas,
   inventario = { total: 0, cantidad: 0 },
+  errorInventario = false,
   onVolver,
   onIrACuentas,
 }) => {
@@ -50,9 +52,13 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
         <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">
           Inventario
         </span>
-        <div className="text-lg font-bold text-gray-900 mt-1">
-          {`${formatMoney(inventario.total)} · ${inventario.cantidad} ${inventario.cantidad === 1 ? 'vehículo' : 'vehículos'}`}
-        </div>
+        {errorInventario ? (
+          <p role="alert" className="text-sm text-red-600 mt-1">No se pudo cargar el inventario.</p>
+        ) : (
+          <div className="text-lg font-bold text-gray-900 mt-1">
+            {`${formatMoney(inventario.total)} · ${inventario.cantidad} ${inventario.cantidad === 1 ? 'vehículo' : 'vehículos'}`}
+          </div>
+        )}
       </section>
 
       {/* Detalle por cuenta */}

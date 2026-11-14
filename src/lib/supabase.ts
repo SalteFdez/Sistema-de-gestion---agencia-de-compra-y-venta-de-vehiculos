@@ -1,13 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { SupabaseAuthClient } from './auth/device-auth';
 
-// Leemos las variables públicas según Vite/Astro
+// Leemos las variables públicas desde import.meta.env (Astro/Vite)
 const getEnvVar = (key: string): string => {
   if (typeof import.meta !== 'undefined' && import.meta.env?.[key]) {
     return import.meta.env[key];
-  }
-  if (typeof process !== 'undefined' && process.env?.[key]) {
-    return process.env[key] || '';
   }
   return '';
 };

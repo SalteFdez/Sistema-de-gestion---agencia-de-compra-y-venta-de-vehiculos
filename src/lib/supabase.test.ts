@@ -1,20 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 describe('supabase client configuration', () => {
-  const originalEnv = process.env;
-
   beforeEach(() => {
     vi.resetModules();
-    process.env = { ...originalEnv };
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    vi.unstubAllEnvs();
   });
 
   it('indica si Supabase está configurado o si faltan las variables de entorno', async () => {
-    delete process.env.PUBLIC_SUPABASE_URL;
-    delete process.env.PUBLIC_SUPABASE_ANON_KEY;
+    vi.stubEnv('PUBLIC_SUPABASE_URL', '');
+    vi.stubEnv('PUBLIC_SUPABASE_ANON_KEY', '');
 
     const { isSupabaseConfigured, getSupabaseClient } = await import('./supabase');
 
@@ -23,8 +20,8 @@ describe('supabase client configuration', () => {
   });
 
   it('crea el cliente correctamente si las variables están presentes', async () => {
-    process.env.PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
-    process.env.PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
+    vi.stubEnv('PUBLIC_SUPABASE_URL', 'https://test.supabase.co');
+    vi.stubEnv('PUBLIC_SUPABASE_ANON_KEY', 'test-anon-key');
 
     const { isSupabaseConfigured, getSupabaseClient } = await import('./supabase');
 

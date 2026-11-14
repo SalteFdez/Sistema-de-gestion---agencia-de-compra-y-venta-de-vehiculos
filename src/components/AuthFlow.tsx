@@ -16,6 +16,7 @@ export interface AuthFlowProps {
   inactivity: SessionInactivityTracker;
   cuentasService?: CuentasService;
   vehiculosService?: VehiculosService;
+  comprimirFoto?: (foto: Blob) => Promise<Blob>;
 }
 
 export const AuthFlow: React.FC<AuthFlowProps> = ({
@@ -24,6 +25,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   inactivity,
   cuentasService,
   vehiculosService,
+  comprimirFoto,
 }) => {
   const [isLinked, setIsLinked] = useState<boolean>(() => authService.isDeviceLinked());
   const [linkedUser, setLinkedUser] = useState<LinkedUser | null>(() => authService.getLinkedUser());
@@ -35,11 +37,19 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [totalDisponible, setTotalDisponible] = useState<number>(0);
   const [vehiculos, setVehiculos] = useState<VehiculoItem[]>([]);
   const [inventario, setInventario] = useState<{ total: number; cantidad: number }>({ total: 0, cantidad: 0 });
+  const [inventarioError, setInventarioError] = useState<boolean>(false);
+
+  const [vehiculosError, setVehiculosError] = useState<boolean>(false);
 
   const loadVehiculosData = useCallback(async () => {
     if (!vehiculosService) return;
-    const lista = await vehiculosService.listarVehiculos();
-    setVehiculos(lista);
+    try {
+      const lista = await vehiculosService.listarVehiculos();
+      setVehiculos(lista);
+      setVehiculosError(false);
+    } catch {
+      setVehiculosError(true);
+    }
   }, [vehiculosService]);
 
   // Formulario de vinculación
@@ -69,14 +79,21 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const loadCuentasData = useCallback(async () => {
     if (!cuentasService || !isUnlocked) return;
     try {
-      const [list, total, inv] = await Promise.all([
+      const [list, total] = await Promise.all([
         cuentasService.obtenerCuentasConSaldo(),
         cuentasService.obtenerDineroDisponible(),
-        vehiculosService ? vehiculosService.obtenerInventario() : Promise.resolve(null),
       ]);
       setCuentas(list);
       setTotalDisponible(total);
-      if (inv) setInventario(inv);
+
+      if (vehiculosService) {
+        try {
+          setInventario(await vehiculosService.obtenerInventario());
+          setInventarioError(false);
+        } catch {
+          setInventarioError(true);
+        }
+      }
     } catch {
       // Ignorar errores transitorios
     }
@@ -241,7 +258,11 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <VehiculosView
             vehiculos={vehiculos}
+            errorCarga={vehiculosError}
+            onReintentar={loadVehiculosData}
             onVolver={() => setCurrentView('home')}
+            onAgregarFoto={vehiculosService ? (id, foto) => vehiculosService.agregarFoto(id, foto) : undefined}
+            comprimirFoto={comprimirFoto}
             onCargarStock={
               vehiculosService
                 ? async (params) => {
@@ -263,6 +284,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             totalDisponible={totalDisponible}
             cuentas={cuentas}
             inventario={inventario}
+            errorInventario={inventarioError}
             onVolver={() => setCurrentView('home')}
             onIrACuentas={() => setCurrentView('cuentas')}
           />

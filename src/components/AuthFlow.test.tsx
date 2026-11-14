@@ -342,6 +342,136 @@ describe('AuthFlow UI Integration', () => {
     expect(screen.getByTestId('total-disponible')).toHaveTextContent('$ 1.500.000');
   });
 
+  it('si el listado de Vehículos falla, avisa y permite reintentar', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const item = {
+      id: 'v20',
+      codigo: 'MC-020',
+      marca: 'Ford',
+      modelo: 'Ka',
+      anio: 2012,
+      color: null,
+      estado: 'en_stock',
+      fotoUrl: null,
+      fechaIngreso: '2026-11-13',
+    };
+    const mockVehiculosService = {
+      listarVehiculos: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Failed to fetch'))
+        .mockResolvedValueOnce([item]),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+
+    expect(await screen.findByText(/no se pudieron cargar los vehículos/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+
+    expect(await screen.findByText('MC-020')).toBeInTheDocument();
+    expect(mockVehiculosService.listarVehiculos).toHaveBeenCalledTimes(2);
+  });
+
+  it('si falla el inventario, Balances avisa y sigue mostrando el dinero disponible', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const mockCuentasService = {
+      obtenerCuentasConSaldo: vi.fn().mockResolvedValue([
+        { id: '1', nombre: 'Caja efectivo', tipo: 'efectivo', saldo: 1500000 },
+      ]),
+      obtenerDineroDisponible: vi.fn().mockResolvedValue(1500000),
+      crearCuenta: vi.fn(),
+    };
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([]),
+      obtenerInventario: vi.fn().mockRejectedValue(new Error('Failed to fetch')),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        cuentasService={mockCuentasService as unknown as any}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /balances/i }));
+
+    expect(await screen.findByText(/no se pudo cargar el inventario/i)).toBeInTheDocument();
+    expect(screen.getByTestId('total-disponible')).toHaveTextContent('$ 1.500.000');
+    expect(screen.getByText('Caja efectivo')).toBeInTheDocument();
+  });
+
+  it('desde Vehículos, agregar una foto a un vehículo sin foto la muestra sin volver a pedir el listado', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([
+        { id: 'v5', codigo: 'MC-005', marca: 'Chevrolet', modelo: 'Corsa', anio: 2005, color: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-13' },
+      ]),
+      agregarFoto: vi.fn().mockResolvedValue({ success: true, fotoUrl: 'https://storage.test/corsa' }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        vehiculosService={mockVehiculosService as unknown as any}
+        comprimirFoto={async (f) => f}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    await screen.findByText('MC-005');
+
+    fireEvent.change(screen.getByLabelText('Elegir foto de MC-005'), {
+      target: { files: [new File(['jpeg'], 'corsa.jpg', { type: 'image/jpeg' })] },
+    });
+
+    expect(await screen.findByRole('img', { name: /chevrolet corsa/i })).toHaveAttribute('src', 'https://storage.test/corsa');
+    expect(mockVehiculosService.agregarFoto).toHaveBeenCalledTimes(1);
+    expect(mockVehiculosService.listarVehiculos).toHaveBeenCalledTimes(1);
+  });
+
   it('al abrir Vehículos muestra los vehículos que trae el servicio', async () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),

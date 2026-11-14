@@ -72,6 +72,22 @@ export interface VehiculosStorageClient {
   };
 }
 
+export interface AgregarFotoResult {
+  success: boolean;
+  fotoUrl?: string;
+  error?: string;
+}
+
+const AVISO_FOTO_ALTA: Record<'subida' | 'ruta', string> = {
+  subida: 'No se pudo subir la foto. El vehículo quedó guardado sin foto.',
+  ruta: 'No se pudo guardar la foto. El vehículo quedó guardado sin foto.',
+};
+
+const AVISO_FOTO_AGREGAR: Record<'subida' | 'ruta', string> = {
+  subida: 'No se pudo subir la foto. Podés intentar de nuevo.',
+  ruta: 'No se pudo guardar la foto. Podés intentar de nuevo.',
+};
+
 export class VehiculosService {
   private db: VehiculosDbClient;
   private storage?: VehiculosStorageClient;
@@ -82,19 +98,25 @@ export class VehiculosService {
   }
 
   async obtenerInventario(): Promise<{ total: number; cantidad: number }> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from('v_inventario')
       .select('cantidad, total')
       .maybeSingle();
+    if (error) {
+      throw new Error(error.message);
+    }
     const fila = (data ?? { cantidad: 0, total: 0 }) as { cantidad: number | string; total: number | string };
     return { total: Number(fila.total) || 0, cantidad: Number(fila.cantidad) || 0 };
   }
 
   async listarVehiculos(): Promise<VehiculoItem[]> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from('vehiculos')
       .select('*')
       .order('created_at', { ascending: false });
+    if (error) {
+      throw new Error(error.message);
+    }
     const filas = (data ?? []) as Array<Record<string, unknown> & { foto_url?: string | null }>;
 
     const rutas = filas.map((f) => f.foto_url).filter((r): r is string => Boolean(r));
@@ -104,11 +126,17 @@ export class VehiculosService {
       urlPorRuta = new Map((firmadas ?? []).map((f) => [f.path, f.signedUrl]));
     }
 
-    // Las filas traen las columnas de la base (snake_case) más fotoUrl; la vista usa solo los campos de VehiculoItem.
-    return filas.map((f) => ({
-      ...f,
+    return filas.map((f): VehiculoItem => ({
+      id: String(f.id),
+      codigo: String(f.codigo),
+      marca: String(f.marca),
+      modelo: String(f.modelo),
+      anio: Number(f.anio),
+      color: (f.color as string | null) ?? null,
+      estado: f.estado as VehiculoItem['estado'],
       fotoUrl: f.foto_url ? (urlPorRuta.get(f.foto_url) ?? null) : null,
-    })) as unknown as VehiculoItem[];
+      fechaIngreso: String(f.fecha_ingreso),
+    }));
   }
 
   async cargarStock(params: CargarStockParams): Promise<CargarStockResult> {
@@ -151,35 +179,58 @@ export class VehiculosService {
     const fila = data as { id: string; codigo: string; fecha_ingreso: string };
 
     if (params.foto && this.storage) {
-      const path = `${fila.id}/${crypto.randomUUID()}.jpg`;
-      const { error: errorSubida } = await this.storage
-        .from('vehiculos')
-        .upload(path, params.foto, { contentType: 'image/jpeg' });
-
-      if (errorSubida) {
+      const { error } = await this.subirFotoYGuardarRuta(fila.id, params.foto);
+      if (error) {
         return {
           success: true,
           codigo: fila.codigo,
           fechaIngreso: fila.fecha_ingreso,
-          avisoFoto: 'No se pudo subir la foto. El vehículo quedó guardado sin foto.',
-        };
-      }
-
-      const { error: errorRuta } = await this.db
-        .from('vehiculos')
-        .update({ foto_url: path })
-        .eq('id', fila.id);
-
-      if (errorRuta) {
-        return {
-          success: true,
-          codigo: fila.codigo,
-          fechaIngreso: fila.fecha_ingreso,
-          avisoFoto: 'No se pudo guardar la foto. El vehículo quedó guardado sin foto.',
+          avisoFoto: AVISO_FOTO_ALTA[error],
         };
       }
     }
 
     return { success: true, codigo: fila.codigo, fechaIngreso: fila.fecha_ingreso };
+  }
+
+  /**
+   * Sube la foto a `<id>/<uuid>.jpg` en el bucket y guarda la ruta en foto_url.
+   * Devuelve la ruta y, si falló, en qué paso: 'subida' o 'ruta'. No lanza.
+   */
+  private async subirFotoYGuardarRuta(
+    id: string,
+    foto: Blob
+  ): Promise<{ path: string; error: null } | { path: null; error: 'subida' | 'ruta' }> {
+    const path = `${id}/${crypto.randomUUID()}.jpg`;
+    const { error: errorSubida } = await this.storage!
+      .from('vehiculos')
+      .upload(path, foto, { contentType: 'image/jpeg' });
+
+    if (errorSubida) {
+      return { path: null, error: 'subida' };
+    }
+
+    const { error: errorRuta } = await this.db
+      .from('vehiculos')
+      .update({ foto_url: path })
+      .eq('id', id);
+
+    if (errorRuta) {
+      return { path: null, error: 'ruta' };
+    }
+
+    return { path, error: null };
+  }
+
+  async agregarFoto(id: string, foto: Blob): Promise<AgregarFotoResult> {
+    if (!this.storage) {
+      return { success: false, error: 'No hay conexión para guardar la foto' };
+    }
+    const subida = await this.subirFotoYGuardarRuta(id, foto);
+    if (subida.error) {
+      return { success: false, error: AVISO_FOTO_AGREGAR[subida.error] };
+    }
+    const { data } = await this.storage.from('vehiculos').createSignedUrls([subida.path], 3600);
+    return { success: true, fotoUrl: data?.[0]?.signedUrl };
   }
 }
