@@ -34,6 +34,7 @@ export interface CargarStockResult {
 export interface Consulta extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
   eq: (col: string, value: unknown) => Consulta;
   order: (col: string, options: { ascending: boolean }) => Consulta;
+  range: (desde: number, hasta: number) => Consulta;
   maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>;
 }
 
@@ -116,6 +117,42 @@ export interface RegistrarVentaResult {
   ventaId?: string;
   codigo?: string;
   ganancia?: number;
+}
+
+export interface MovimientoItem {
+  id: string;
+  fecha: string;
+  tipo: string;
+  monto: number;
+  descripcion: string | null;
+  cuentaNombre: string;
+  vehiculoCodigo: string | null;
+  categoriaNombre: string | null;
+  creadoPor: string;
+  anulado: boolean;
+  anuladoPor: string | null;
+  /** Momento de la anulación (timestamptz, ISO) */
+  anuladoEl: string | null;
+  motivoAnulacion: string | null;
+  gastoId: string | null;
+  ventaId: string | null;
+}
+
+export const TAMANO_PAGINA_MOVIMIENTOS = 50;
+
+export interface AnularMovimientoParams {
+  movimientoId: string;
+  /** Si el movimiento es de un gasto, se anula el gasto completo */
+  gastoId: string | null;
+  motivo: string;
+  /** Tipo del movimiento, para no anular suelto lo que se anula por su operación completa */
+  tipo?: string;
+  anulado?: boolean;
+}
+
+export interface AnularMovimientoResult {
+  success: boolean;
+  error?: string;
 }
 
 export interface RegistrarIngresoParams {
@@ -303,6 +340,86 @@ export class VehiculosService {
     }
 
     return { success: true, id: fila.id, codigo: fila.codigo, saldos, avisoFoto };
+  }
+
+  /** Movimientos de a 50, del más nuevo al más viejo. `desde` es el índice del primer movimiento a traer. */
+  async listarMovimientos(desde: number): Promise<MovimientoItem[]> {
+    const { data, error } = await this.db
+      .from('movimientos')
+      .select(
+        'id, fecha, tipo, monto, descripcion, anulado, anulado_at, motivo_anulacion, gasto_id, venta_id, ' +
+          'cuenta:cuentas(nombre), vehiculo:vehiculos(codigo), categoria:categorias(nombre), ' +
+          'creador:usuarios!created_by(nombre), anulador:usuarios!anulado_por(nombre)'
+      )
+      .order('created_at', { ascending: false })
+      .range(desde, desde + TAMANO_PAGINA_MOVIMIENTOS - 1);
+    if (error) {
+      throw new Error(error.message);
+    }
+    type Fila = {
+      id: string;
+      fecha: string;
+      tipo: string;
+      monto: number | string;
+      descripcion: string | null;
+      anulado: boolean;
+      anulado_at: string | null;
+      motivo_anulacion: string | null;
+      gasto_id: string | null;
+      venta_id: string | null;
+      cuenta: { nombre: string } | null;
+      vehiculo: { codigo: string } | null;
+      categoria: { nombre: string } | null;
+      creador: { nombre: string } | null;
+      anulador: { nombre: string } | null;
+    };
+    const filas = (Array.isArray(data) ? data : []) as Fila[];
+    return filas.map((f) => ({
+      id: f.id,
+      fecha: f.fecha,
+      tipo: f.tipo,
+      monto: Number(f.monto) || 0,
+      descripcion: f.descripcion ?? null,
+      cuentaNombre: f.cuenta?.nombre ?? '',
+      vehiculoCodigo: f.vehiculo?.codigo ?? null,
+      categoriaNombre: f.categoria?.nombre ?? null,
+      creadoPor: f.creador?.nombre ?? '',
+      anulado: f.anulado,
+      anuladoPor: f.anulador?.nombre ?? null,
+      anuladoEl: f.anulado_at ?? null,
+      motivoAnulacion: f.motivo_anulacion ?? null,
+      gastoId: f.gasto_id ?? null,
+      ventaId: f.venta_id ?? null,
+    }));
+  }
+
+  async anularMovimiento(params: AnularMovimientoParams): Promise<AnularMovimientoResult> {
+    if (!params.motivo?.trim()) {
+      return { success: false, error: 'El motivo es obligatorio' };
+    }
+    if (params.anulado) {
+      return { success: false, error: 'Este movimiento ya está anulado' };
+    }
+    if (params.tipo === 'compra' || params.tipo === 'venta_cobro') {
+      return {
+        success: false,
+        error: 'Este movimiento es parte de una compra o venta: se anula la operación completa',
+      };
+    }
+    const motivo = params.motivo.trim();
+    let error: { message: string } | null;
+    try {
+      ({ error } = params.gastoId
+        ? await this.db.rpc('anular_gasto', { p_gasto_id: params.gastoId, p_motivo: motivo })
+        : await this.db.rpc('anular_movimiento', { p_movimiento_id: params.movimientoId, p_motivo: motivo }));
+    } catch {
+      // Sin señal: el pedido pudo llegar sin que vuelva la respuesta, así que no afirmamos que no se anuló
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se anuló: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message || 'No se pudo anular'}. No se anuló nada.` };
+    }
+    return { success: true };
   }
 
   async registrarIngreso(params: RegistrarIngresoParams): Promise<RegistrarIngresoResult> {

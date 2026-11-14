@@ -31,7 +31,8 @@ Sistema de gestión interna para una agencia de compra y venta de vehículos usa
    - **E1-06b · Filtrar vehículos por estado** — Como socio, quiero filtrar el listado de Vehículos por estado (En stock / Vendidos / Todos), mostrando En stock de entrada, para encontrar rápido lo que tengo para vender sin que se mezclen los vendidos. Requiere: E1-06
 7. **E1-07 · Gasto simple** — Como socio, quiero registrar un gasto con monto, categoría, descripción y cuenta, asignado a un vehículo o como general del negocio, para que el balance lo refleje y el gasto sume al costo real del auto. Requiere: E1-02, E1-05 · *Las categorías iniciales salen de la planilla de la Etapa 0 (preg. abierta 6).*
    - **E1-07b · Ingreso simple** — Como socio, quiero registrar un ingreso que no es una venta (ej. una comisión) con monto, categoría, descripción y cuenta, para que el balance lo refleje. Requiere: E1-07
-8. **E1-08 · Anular un error** — Como socio, quiero ver el historial de movimientos con quién cargó cada uno y anular el equivocado indicando el motivo, para corregir errores y que el balance se recalcule. Requiere: E1-02
+8. **E1-08 · Anular un error** — Como socio, quiero ver el historial de movimientos con quién cargó cada uno y anular el equivocado indicando el motivo, para corregir errores y que el balance se recalcule. Requiere: E1-02 · *Cubre saldo inicial, ingreso y gasto; compra y venta van en E1-08b.*
+   - **E1-08b · Anular una compra o una venta** — Como socio, quiero anular una compra, el alta de un vehículo de stock existente o una venta cargada por error, indicando el motivo, para que el stock, los saldos y la ganancia queden como si no hubiera pasado. Requiere: E1-08
 
 ## Etapa 2 — Negocios complejos
 

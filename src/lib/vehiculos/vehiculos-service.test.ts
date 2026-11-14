@@ -691,6 +691,123 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('listarMovimientos', () => {
+    it('trae de a 50, del más nuevo al más viejo, con quién lo cargó y la cuenta', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          order: vi.fn(() => b),
+          range: vi.fn(() => b),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filas = [
+        {
+          id: 'm1', fecha: '2026-11-14', tipo: 'ingreso_otro', monto: 80000, descripcion: 'Comisión',
+          anulado: false, motivo_anulacion: null, gasto_id: null, venta_id: null,
+          cuenta: { nombre: 'Banco' }, vehiculo: null, categoria: { nombre: 'Comisión' },
+          creador: { nombre: 'Lautaro' }, anulador: null,
+        },
+      ];
+      const select = vi.fn().mockReturnValue(consulta({ data: filas, error: null }));
+      mockDb.from = vi.fn().mockReturnValue({ select });
+
+      const service = new VehiculosService(mockDb);
+      const lista = await service.listarMovimientos(0);
+
+      expect(mockDb.from).toHaveBeenCalledWith('movimientos');
+      expect(lista).toEqual([
+        expect.objectContaining({
+          id: 'm1', tipo: 'ingreso_otro', monto: 80000, cuentaNombre: 'Banco',
+          creadoPor: 'Lautaro', anulado: false, anuladoPor: null,
+        }),
+      ]);
+    });
+
+    it('trae la fecha de anulación de los movimientos anulados', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          order: vi.fn(() => b),
+          range: vi.fn(() => b),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filas = [
+        {
+          id: 'm8', fecha: '2026-11-14', tipo: 'ingreso_otro', monto: 80000, descripcion: 'Comisión',
+          anulado: true, motivo_anulacion: 'cargué mal', anulado_at: '2026-11-14T15:30:00+00:00',
+          gasto_id: null, venta_id: null,
+          cuenta: { nombre: 'Banco' }, vehiculo: null, categoria: { nombre: 'Comisión' },
+          creador: { nombre: 'Lautaro' }, anulador: { nombre: 'Antonio' },
+        },
+      ];
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue(consulta({ data: filas, error: null })) });
+
+      const service = new VehiculosService(mockDb);
+      const [mov] = await service.listarMovimientos(0);
+
+      expect(mov.anuladoEl).toBe('2026-11-14T15:30:00+00:00');
+    });
+  });
+
+  describe('anularMovimiento', () => {
+    it('no anula si el motivo está vacío y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.anularMovimiento({ movimientoId: 'm1', gastoId: null, motivo: '   ' });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/motivo.*obligatorio/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('anular un gasto llama a anular_gasto con su id y el motivo', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { gasto_id: 'g1', anulado: true }, error: null });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.anularMovimiento({ movimientoId: 'm1', gastoId: 'g1', motivo: 'cargué mal el monto' });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('anular_gasto', { p_gasto_id: 'g1', p_motivo: 'cargué mal el monto' });
+      expect(res.success).toBe(true);
+    });
+
+    it('anular un saldo inicial o un ingreso llama a anular_movimiento con su id y el motivo', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { movimiento_id: 'm2', anulado: true }, error: null });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.anularMovimiento({ movimientoId: 'm2', gastoId: null, motivo: 'monto equivocado' });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('anular_movimiento', { p_movimiento_id: 'm2', p_motivo: 'monto equivocado' });
+      expect(res.success).toBe(true);
+    });
+
+    it('no anula una compra, un cobro de venta ni un movimiento ya anulado, y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const compra = await service.anularMovimiento({ movimientoId: 'm3', gastoId: null, motivo: 'x', tipo: 'compra' });
+      const cobro = await service.anularMovimiento({ movimientoId: 'm4', gastoId: null, motivo: 'x', tipo: 'venta_cobro' });
+      const yaAnulado = await service.anularMovimiento({ movimientoId: 'm5', gastoId: null, motivo: 'x', tipo: 'ingreso_otro', anulado: true });
+
+      expect(compra.error).toMatch(/parte de una compra o venta/i);
+      expect(cobro.error).toMatch(/parte de una compra o venta/i);
+      expect(yaAnulado.error).toMatch(/ya está anulado/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('si falla la red al anular, devuelve error sin lanzar y no afirma que se anuló', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new Error('Network down'));
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.anularMovimiento({ movimientoId: 'm6', gastoId: null, motivo: 'x', tipo: 'saldo_inicial' });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sin conexión/i);
+    });
+  });
+
   describe('registrarIngreso', () => {
     it('no registra si el monto no es mayor que 0 y no llama a la RPC', async () => {
       const service = new VehiculosService(mockDb);

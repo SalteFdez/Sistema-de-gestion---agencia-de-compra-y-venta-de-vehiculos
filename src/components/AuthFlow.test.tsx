@@ -1125,6 +1125,136 @@ describe('AuthFlow UI Integration', () => {
     expect(mockCuentasService.obtenerCuentasConSaldo.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('el botón grande "Movimientos" abre el historial y permite volver', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([]),
+      listarMovimientos: vi.fn().mockResolvedValue([]),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^movimientos$/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Movimientos' })).toBeInTheDocument();
+    expect(mockVehiculosService.listarMovimientos).toHaveBeenCalledWith(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+  });
+
+  it('"Ver más" en Movimientos trae la página siguiente, desde donde quedó', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const pagina = (desde: number) =>
+      Array.from({ length: 50 }, (_, i) => ({
+        id: `m${desde + i}`, fecha: '2026-11-14', tipo: 'ingreso_otro', monto: 1000, descripcion: `Ingreso ${desde + i}`,
+        cuentaNombre: 'Banco', vehiculoCodigo: null, categoriaNombre: 'Comisión', creadoPor: 'Lautaro',
+        anulado: false, anuladoPor: null, motivoAnulacion: null, gastoId: null, ventaId: null,
+      }));
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([]),
+      listarMovimientos: vi.fn().mockImplementation((desde: number) => Promise.resolve(pagina(desde))),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^movimientos$/i }));
+    await screen.findByText('Ingreso 0');
+    fireEvent.click(screen.getByRole('button', { name: /ver más/i }));
+
+    expect(await screen.findByText('Ingreso 50')).toBeInTheDocument();
+    expect(mockVehiculosService.listarMovimientos).toHaveBeenLastCalledWith(50);
+  });
+
+  it('anular un ingreso desde Movimientos lo anula con el servicio y recarga el historial y las cuentas', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const ingreso = {
+      id: 'm20', fecha: '2026-11-14', tipo: 'ingreso_otro', monto: 80000, descripcion: 'Comisión',
+      cuentaNombre: 'Banco', vehiculoCodigo: null, categoriaNombre: 'Comisión', creadoPor: 'Lautaro',
+      anulado: false, anuladoPor: null, motivoAnulacion: null, gastoId: null, ventaId: null,
+    };
+    const mockCuentasService = {
+      obtenerCuentasConSaldo: vi.fn().mockResolvedValue([{ id: 'c1', nombre: 'Banco', tipo: 'banco', saldo: 80000 }]),
+      obtenerDineroDisponible: vi.fn().mockResolvedValue(80000),
+      crearCuenta: vi.fn(),
+    };
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([]),
+      obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+      listarMovimientos: vi.fn().mockResolvedValue([ingreso]),
+      anularMovimiento: vi.fn().mockResolvedValue({ success: true }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        cuentasService={mockCuentasService as unknown as any}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^movimientos$/i }));
+    fireEvent.click(await screen.findByText('Comisión'));
+    fireEvent.click(screen.getByRole('button', { name: /^anular$/i }));
+    fireEvent.change(screen.getByLabelText(/motivo/i), { target: { value: 'cargué mal el monto' } });
+    fireEvent.click(screen.getByRole('button', { name: /anular movimiento/i }));
+
+    await waitFor(() =>
+      expect(mockVehiculosService.anularMovimiento).toHaveBeenCalledWith(
+        expect.objectContaining({ movimientoId: 'm20', gastoId: null, motivo: 'cargué mal el monto', tipo: 'ingreso_otro' })
+      )
+    );
+    expect(mockVehiculosService.listarMovimientos.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mockCuentasService.obtenerCuentasConSaldo.mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('al abrir Vehículos muestra los vehículos que trae el servicio', async () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),

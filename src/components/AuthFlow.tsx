@@ -10,7 +10,9 @@ import { VehiculosView, type FiltroEstado } from './VehiculosView';
 import { CompraVehiculoView } from './CompraVehiculoView';
 import { VenderVehiculoView } from './VenderVehiculoView';
 import { RegistrarGastoView, type CategoriaGasto } from './RegistrarGastoView';
-import type { VehiculosService, VehiculoItem, DetalleVehiculo } from '../lib/vehiculos/vehiculos-service';
+import { MovimientosView } from './MovimientosView';
+import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem } from '../lib/vehiculos/vehiculos-service';
+import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
 
@@ -37,7 +39,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<
-    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso'
+    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos'
   >('home');
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
   const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
@@ -75,6 +77,21 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   // Vehículo ya elegido cuando el gasto se abre desde su detalle ("Agregar gasto")
   const [gastoPreseleccionado, setGastoPreseleccionado] = useState<string | null>(null);
   const [categoriasIngreso, setCategoriasIngreso] = useState<CategoriaGasto[]>([]);
+
+  const [movimientos, setMovimientos] = useState<MovimientoItem[]>([]);
+  const [hayMasMovimientos, setHayMasMovimientos] = useState<boolean>(false);
+
+  const loadMovimientos = useCallback(async (desde: number) => {
+    if (!vehiculosService) return;
+    try {
+      const lista = await vehiculosService.listarMovimientos(desde);
+      setMovimientos(desde === 0 ? lista : (prev) => [...prev, ...lista]);
+      // Una página llena (50) indica que puede haber más
+      setHayMasMovimientos(lista.length === TAMANO_PAGINA_MOVIMIENTOS);
+    } catch {
+      // El error de carga se muestra en la pantalla de movimientos (próximo paso)
+    }
+  }, [vehiculosService]);
 
   const loadCategoriasIngreso = useCallback(async () => {
     if (!vehiculosService) return;
@@ -304,6 +321,36 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               onCancel={() => setCurrentView('home')}
             />
           </div>
+        </main>
+      );
+    }
+
+    if (currentView === 'movimientos') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <MovimientosView
+            movimientos={movimientos}
+            hayMas={hayMasMovimientos}
+            onVerMas={() => void loadMovimientos(movimientos.length)}
+            onAnular={
+              vehiculosService
+                ? async (m, motivo) => {
+                    const res = await vehiculosService.anularMovimiento({
+                      movimientoId: m.id,
+                      gastoId: m.gastoId,
+                      motivo,
+                      tipo: m.tipo,
+                      anulado: m.anulado,
+                    });
+                    if (res.success) {
+                      await Promise.all([loadMovimientos(0), loadCuentasData(), loadVehiculosData()]);
+                    }
+                    return res;
+                  }
+                : undefined
+            }
+            onVolver={() => setCurrentView('home')}
+          />
         </main>
       );
     }
@@ -631,6 +678,20 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <span>Registrar ingreso</span>
+            </button>
+          </div>
+
+          {/* Botón Movimientos (historial) */}
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                void loadMovimientos(0);
+                setCurrentView('movimientos');
+              }}
+              className="w-full py-4 px-6 bg-gray-800 hover:bg-gray-900 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+            >
+              <span>Movimientos</span>
             </button>
           </div>
 
