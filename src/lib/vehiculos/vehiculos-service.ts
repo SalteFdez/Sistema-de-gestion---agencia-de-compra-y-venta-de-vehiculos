@@ -118,6 +118,19 @@ export interface RegistrarVentaResult {
   ganancia?: number;
 }
 
+export interface RegistrarIngresoParams {
+  monto: number;
+  categoriaId: string;
+  cuentaId: string;
+  descripcion?: string;
+}
+
+export interface RegistrarIngresoResult {
+  success: boolean;
+  error?: string;
+  saldoCuenta?: number;
+}
+
 export interface RegistrarGastoParams {
   monto: number;
   categoriaId: string;
@@ -290,6 +303,37 @@ export class VehiculosService {
     }
 
     return { success: true, id: fila.id, codigo: fila.codigo, saldos, avisoFoto };
+  }
+
+  async registrarIngreso(params: RegistrarIngresoParams): Promise<RegistrarIngresoResult> {
+    if (!(params.monto > 0)) {
+      return { success: false, error: 'El monto tiene que ser mayor que 0' };
+    }
+    if (!params.categoriaId) {
+      return { success: false, error: 'Elegí una categoría' };
+    }
+    if (!params.cuentaId) {
+      return { success: false, error: 'Elegí una cuenta' };
+    }
+
+    let data: unknown;
+    let error: { message: string } | null;
+    try {
+      ({ data, error } = await this.db.rpc('registrar_ingreso', {
+        p_monto: params.monto,
+        p_categoria_id: params.categoriaId,
+        p_cuenta_id: params.cuentaId,
+        p_descripcion: params.descripcion?.trim() || null,
+      }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se guardó: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message || 'No se pudo registrar el ingreso'}. No se guardó nada.` };
+    }
+
+    const fila = data as { saldo_cuenta: number | string };
+    return { success: true, saldoCuenta: Number(fila.saldo_cuenta) || 0 };
   }
 
   async listarCategorias(tipo: 'gasto' | 'ingreso'): Promise<Array<{ id: string; nombre: string }>> {

@@ -5,6 +5,8 @@ import {
   type VehiculoItem,
   type RegistrarGastoParams,
   type RegistrarGastoResult,
+  type RegistrarIngresoParams,
+  type RegistrarIngresoResult,
 } from '../lib/vehiculos/vehiculos-service';
 
 // Saldo negativo con el signo menos típico: "$ −150.000"
@@ -22,9 +24,12 @@ export interface RegistrarGastoViewProps {
   vehiculos?: VehiculoItem[];
   /** Si viene desde el detalle de un vehículo, ya arranca en "Un vehículo" con ese vehículo elegido */
   vehiculoPreseleccionado?: string;
+  /** "ingreso": misma pantalla para registrar un ingreso (sin vehículo ni aviso de negativo) */
+  modo?: 'gasto' | 'ingreso';
   onVolver: () => void;
   onIrACuentas?: () => void;
   onRegistrar?: (params: RegistrarGastoParams) => Promise<RegistrarGastoResult>;
+  onRegistrarIngreso?: (params: RegistrarIngresoParams) => Promise<RegistrarIngresoResult>;
 }
 
 export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
@@ -32,10 +37,13 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   cuentas,
   vehiculos = [],
   vehiculoPreseleccionado,
+  modo = 'gasto',
   onVolver,
   onIrACuentas,
   onRegistrar,
+  onRegistrarIngreso,
 }) => {
+  const titulo = modo === 'ingreso' ? 'Registrar ingreso' : 'Registrar gasto';
   const [monto, setMonto] = useState<string>('');
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [cuentaId, setCuentaId] = useState<string | null>(null);
@@ -47,6 +55,26 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   const [avisoNegativo, setAvisoNegativo] = useState<Array<{ nombre: string; saldoResultante: number }> | null>(null);
   const [resumen, setResumen] = useState<string | null>(null);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+
+  const enviarIngreso = async () => {
+    if (!puedeConfirmar || !onRegistrarIngreso || categoriaId === null || cuentaId === null) return;
+    const res = await onRegistrarIngreso({
+      monto: montoNumero,
+      categoriaId,
+      cuentaId,
+      descripcion: descripcion.trim() || undefined,
+    });
+    if (res.success) {
+      setErrorGuardado(null);
+      const catNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
+      const cuentaNombre = cuentas.find((c) => c.id === cuentaId)?.nombre ?? '';
+      const concepto = descripcion.trim() || catNombre;
+      setResumen(`Ingreso de ${formatMoney(montoNumero)} · ${concepto} · entró en ${cuentaNombre}`);
+    } else {
+      // Nada quedó guardado: los datos siguen en pantalla para reintentar
+      setErrorGuardado(res.error ?? 'No se pudo registrar el ingreso. No se guardó nada.');
+    }
+  };
 
   const enviar = async () => {
     if (!puedeConfirmar || !onRegistrar || categoriaId === null || cuentaId === null) return;
@@ -72,6 +100,11 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
 
   const intentarConfirmar = () => {
     if (cuentaId === null) return;
+    if (modo === 'ingreso') {
+      // Un ingreso solo suma: no hay aviso de saldo negativo
+      void enviarIngreso();
+      return;
+    }
     const negativas = cuentasQueQuedaranNegativas(
       [{ cuentaId, monto: montoNumero }],
       cuentas.map((c) => ({ cuentaId: c.id, nombre: c.nombre, saldo: c.saldo }))
@@ -84,12 +117,12 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   };
 
   const montoNumero = parseMoneyInput(monto);
+  // Ingreso: solo monto, categoría y cuenta (siempre general). Gasto: también el alcance.
   const puedeConfirmar =
     montoNumero > 0 &&
     categoriaId !== null &&
     cuentaId !== null &&
-    alcance !== null &&
-    (alcance === 'general' || vehiculoId !== null);
+    (modo === 'ingreso' || (alcance !== null && (alcance === 'general' || vehiculoId !== null)));
 
   // En stock primero, después los vendidos (marcados)
   const vehiculosOrdenados = [...vehiculos].sort((a, b) => {
@@ -102,7 +135,9 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
     return (
       <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
         <section className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm text-center mt-6">
-          <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">Gasto registrado</span>
+          <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">
+            {modo === 'ingreso' ? 'Ingreso registrado' : 'Gasto registrado'}
+          </span>
           <p className="text-base text-gray-800 mt-4">{resumen}</p>
           <button
             type="button"
@@ -120,7 +155,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
     return (
       <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
         <header className="flex justify-between items-center py-3 mb-4">
-          <h1 className="text-xl font-bold text-gray-900">Registrar gasto</h1>
+          <h1 className="text-xl font-bold text-gray-900">{titulo}</h1>
           <button
             type="button"
             onClick={onVolver}
@@ -148,7 +183,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
       <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Registrar gasto</h1>
+        <h1 className="text-xl font-bold text-gray-900">{titulo}</h1>
         <button
           type="button"
           onClick={onVolver}
@@ -230,6 +265,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
           </div>
         </div>
 
+        {modo === 'gasto' && (
         <div>
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">¿A qué corresponde?</h2>
           <div className="grid grid-cols-2 gap-2">
@@ -251,6 +287,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
             })}
           </div>
         </div>
+        )}
         {errorGuardado && (
           <p role="alert" className="text-sm text-red-700">
             {errorGuardado}

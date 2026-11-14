@@ -199,6 +199,73 @@ describe('RegistrarGastoView', () => {
     expect(screen.getByText('MC-002').closest('article')).toHaveClass('border-blue-600');
   });
 
+  it('en modo ingreso no pregunta si corresponde a un vehículo ni muestra la lista de vehículos', () => {
+    render(
+      <RegistrarGastoView
+        modo="ingreso"
+        categorias={[{ id: 'cat9', nombre: 'Comisión' }]}
+        cuentas={cuentasPrueba}
+        vehiculos={[]}
+        onVolver={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('heading', { name: 'Registrar ingreso' })).toBeInTheDocument();
+    expect(screen.queryByText('¿A qué corresponde?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'General del negocio' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Un vehículo' })).not.toBeInTheDocument();
+  });
+
+  it('en modo ingreso, Confirmar necesita monto, categoría y cuenta, y manda el ingreso sin pedir alcance', async () => {
+    const onRegistrarIngreso = vi.fn().mockResolvedValue({ success: true, saldoCuenta: 580000 });
+
+    render(
+      <RegistrarGastoView
+        modo="ingreso"
+        categorias={[{ id: 'cat9', nombre: 'Comisión' }]}
+        cuentas={cuentasPrueba}
+        onVolver={vi.fn()}
+        onRegistrarIngreso={onRegistrarIngreso}
+      />
+    );
+
+    const confirmar = screen.getByRole('button', { name: /confirmar/i });
+    expect(confirmar).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '80000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Comisión' }));
+    fireEvent.click(screen.getByRole('button', { name: /caja efectivo/i }));
+    expect(confirmar).toBeEnabled();
+
+    fireEvent.click(confirmar);
+
+    expect(onRegistrarIngreso).toHaveBeenCalledWith(
+      expect.objectContaining({ monto: 80000, categoriaId: 'cat9', cuentaId: 'c0' })
+    );
+  });
+
+  it('en modo ingreso, al guardar muestra el resumen "Ingreso de $ … · categoría · entró en cuenta"', async () => {
+    const onRegistrarIngreso = vi.fn().mockResolvedValue({ success: true, saldoCuenta: 580000 });
+    const cuentas = [{ id: 'c1', nombre: 'Banco', tipo: 'banco' as const, saldo: 500000 }];
+
+    render(
+      <RegistrarGastoView
+        modo="ingreso"
+        categorias={[{ id: 'cat9', nombre: 'Comisión' }]}
+        cuentas={cuentas}
+        onVolver={vi.fn()}
+        onRegistrarIngreso={onRegistrarIngreso}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '80000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Comisión' }));
+    fireEvent.click(screen.getByRole('button', { name: /banco/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
+
+    expect(await screen.findByText('Ingreso de $ 80.000 · Comisión · entró en Banco')).toBeInTheDocument();
+  });
+
   it('sin cuentas cargadas, avisa en lugar del formulario y permite cargar la primera', () => {
     const onIrACuentas = vi.fn();
 

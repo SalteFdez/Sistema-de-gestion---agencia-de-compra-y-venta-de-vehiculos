@@ -37,7 +37,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<
-    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto'
+    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso'
   >('home');
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
   const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
@@ -74,6 +74,16 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [categoriasGasto, setCategoriasGasto] = useState<CategoriaGasto[]>([]);
   // Vehículo ya elegido cuando el gasto se abre desde su detalle ("Agregar gasto")
   const [gastoPreseleccionado, setGastoPreseleccionado] = useState<string | null>(null);
+  const [categoriasIngreso, setCategoriasIngreso] = useState<CategoriaGasto[]>([]);
+
+  const loadCategoriasIngreso = useCallback(async () => {
+    if (!vehiculosService) return;
+    try {
+      setCategoriasIngreso(await vehiculosService.listarCategorias('ingreso'));
+    } catch {
+      // Sin categorías, la grilla queda vacía
+    }
+  }, [vehiculosService]);
 
   const loadCategoriasGasto = useCallback(async () => {
     if (!vehiculosService) return;
@@ -294,6 +304,31 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               onCancel={() => setCurrentView('home')}
             />
           </div>
+        </main>
+      );
+    }
+
+    if (currentView === 'ingreso') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <RegistrarGastoView
+            modo="ingreso"
+            categorias={categoriasIngreso}
+            cuentas={cuentas}
+            onVolver={() => setCurrentView('home')}
+            onIrACuentas={() => setCurrentView('cuentas')}
+            onRegistrarIngreso={
+              vehiculosService
+                ? async (params) => {
+                    const res = await vehiculosService.registrarIngreso(params);
+                    if (res.success) {
+                      await Promise.all([loadCuentasData(), loadVehiculosData()]);
+                    }
+                    return res;
+                  }
+                : undefined
+            }
+          />
         </main>
       );
     }
@@ -581,6 +616,21 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <span>Registrar gasto</span>
+            </button>
+          </div>
+
+          {/* Botón grande Registrar ingreso */}
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                loadCuentasData();
+                void loadCategoriasIngreso();
+                setCurrentView('ingreso');
+              }}
+              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+            >
+              <span>Registrar ingreso</span>
             </button>
           </div>
 

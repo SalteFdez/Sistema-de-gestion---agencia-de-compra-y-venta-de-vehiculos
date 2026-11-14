@@ -691,6 +691,54 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('registrarIngreso', () => {
+    it('no registra si el monto no es mayor que 0 y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarIngreso({ monto: 0, categoriaId: 'cat9', cuentaId: 'c1' });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/monto.*mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si falta la categoría o la cuenta y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const sinCategoria = await service.registrarIngreso({ monto: 80000, categoriaId: '', cuentaId: 'c1' });
+      const sinCuenta = await service.registrarIngreso({ monto: 80000, categoriaId: 'cat9', cuentaId: '' });
+
+      expect(sinCategoria.error).toMatch(/elegí una categoría/i);
+      expect(sinCuenta.error).toMatch(/elegí una cuenta/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('con datos válidos llama a registrar_ingreso y devuelve el saldo de la cuenta', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: { movimiento_id: 'm1', fecha: '2026-11-14', saldo_cuenta: 1080000 },
+        error: null,
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarIngreso({
+        monto: 80000,
+        categoriaId: 'cat9',
+        cuentaId: 'c1',
+        descripcion: 'Comisión por intermediación',
+      });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith(
+        'registrar_ingreso',
+        expect.objectContaining({
+          p_monto: 80000,
+          p_categoria_id: 'cat9',
+          p_cuenta_id: 'c1',
+          p_descripcion: 'Comisión por intermediación',
+        })
+      );
+      expect(res.success).toBe(true);
+      expect(res.saldoCuenta).toBe(1080000);
+    });
+  });
+
   describe('registrarGasto', () => {
     it('no registra si el monto no es mayor que 0 y no llama a la RPC', async () => {
       const service = new VehiculosService(mockDb);
