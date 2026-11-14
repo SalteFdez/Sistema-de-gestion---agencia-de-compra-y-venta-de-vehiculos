@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import type { CuentaItem } from '../lib/cuentas/cuentas-service';
 import { formatMoney, parseMoneyInput } from '../lib/format/money';
 import { comprimirFotoEnNavegador } from '../lib/vehiculos/comprimir-foto';
@@ -7,6 +7,7 @@ import {
   type RegistrarCompraParams,
   type RegistrarCompraResult,
 } from '../lib/vehiculos/vehiculos-service';
+import { RepartoCuentas, type FilaReparto } from './RepartoCuentas';
 
 export interface CompraVehiculoViewProps {
   cuentas: CuentaItem[];
@@ -19,11 +20,6 @@ export interface CompraVehiculoViewProps {
 
 // Saldo negativo con el signo menos típico: "$ −500.000"
 const formatoNegativo = (n: number): string => `$ −${formatMoney(Math.abs(n)).replace('$ ', '')}`;
-
-interface FilaPago {
-  cuentaId: string;
-  monto: string;
-}
 
 export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
   cuentas,
@@ -44,14 +40,8 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
   const [modelo, setModelo] = useState<string>('');
   const [anio, setAnio] = useState<string>('');
   const [precio, setPrecio] = useState<string>('');
-  const [pagos, setPagos] = useState<FilaPago[]>([]);
-
-  // Las cuentas pueden llegar después del primer render: si todavía no hay filas de pago, se arma la primera.
-  useEffect(() => {
-    if (pagos.length === 0 && cuentas.length > 0) {
-      setPagos([{ cuentaId: cuentas[0].id, monto: precio }]);
-    }
-  }, [cuentas, pagos.length, precio]);
+  // Reparto entre cuentas: lo mantiene el componente RepartoCuentas
+  const [pagos, setPagos] = useState<FilaReparto[]>([]);
 
   const precioNumero = parseMoneyInput(precio);
   const sumaPagos = pagos.reduce((acc, f) => acc + parseMoneyInput(f.monto), 0);
@@ -262,75 +252,16 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               type="text"
               inputMode="numeric"
               value={precio}
-              onChange={(e) => {
-                const valor = e.target.value;
-                setPrecio(valor);
-                // Mientras haya una sola cuenta, el monto sigue al precio completo
-                setPagos((prev) => (prev.length === 1 ? [{ ...prev[0], monto: valor }] : prev));
-              }}
+              onChange={(e) => setPrecio(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
             />
           </div>
 
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">¿De dónde salió la plata?</h2>
-          {pagos.map((fila, i) => (
-            <div key={i} className="flex gap-2">
-              <select
-                aria-label={`Cuenta de pago ${i + 1}`}
-                value={fila.cuentaId}
-                onChange={(e) =>
-                  setPagos((prev) => prev.map((f, j) => (j === i ? { ...f, cuentaId: e.target.value } : f)))
-                }
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                {cuentas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
-              <input
-                aria-label={`Monto pago ${i + 1}`}
-                type="text"
-                inputMode="numeric"
-                value={fila.monto}
-                onChange={(e) =>
-                  setPagos((prev) => prev.map((f, j) => (j === i ? { ...f, monto: e.target.value } : f)))
-                }
-                className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-          ))}
-
-          <button
-            type="button"
-            onClick={() =>
-              setPagos((prev) => {
-                // Primera cuenta que todavía no está en el reparto
-                const usadas = new Set(prev.map((f) => f.cuentaId));
-                const libre = cuentas.find((c) => !usadas.has(c.id)) ?? cuentas[0];
-                return [...prev, { cuentaId: libre.id, monto: '' }];
-              })
-            }
-            className="text-xs text-blue-600 hover:underline font-medium"
-          >
-            + Agregar otra cuenta
-          </button>
+          <RepartoCuentas cuentas={cuentas} precio={precioNumero} onChange={setPagos} />
 
           {anioFueraDeRango && (
             <p className="text-sm text-red-700">El año tiene que estar entre 1950 y {anioMaximo}</p>
-          )}
-          {!montosValidos && (
-            <p className="text-sm text-red-700">Cada pago tiene que ser mayor que 0</p>
-          )}
-          {!cuentasSinRepetir && (
-            <p className="text-sm text-red-700">No podés repetir una cuenta en los pagos</p>
-          )}
-
-          {precioNumero > 0 && diferencia !== 0 && (
-            <p className="text-sm font-semibold text-amber-700">
-              {diferencia > 0 ? `Faltan ${formatMoney(diferencia)}` : `Sobran ${formatMoney(-diferencia)}`}
-            </p>
           )}
 
           {errorGuardado && (

@@ -736,6 +736,85 @@ describe('AuthFlow UI Integration', () => {
     expect(mockVehiculosService.obtenerDetalle).toHaveBeenCalledTimes(2);
   });
 
+  it('el botón grande "Vender vehículo" abre la pantalla de venta y permite volver', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
+
+    expect(await screen.findByRole('heading', { name: /vender vehículo/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+  });
+
+  it('al confirmar una venta desde la app, la guarda con el servicio y recarga cuentas y vehículos', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    const stock = {
+      id: 'v30', codigo: 'MC-030', marca: 'Peugeot', modelo: '208', anio: 2019, color: null,
+      estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-14',
+    };
+    const mockCuentasService = {
+      obtenerCuentasConSaldo: vi.fn().mockResolvedValue([
+        { id: 'c1', nombre: 'Caja efectivo', tipo: 'efectivo', saldo: 5000000 },
+      ]),
+      obtenerDineroDisponible: vi.fn().mockResolvedValue(5000000),
+      crearCuenta: vi.fn(),
+    };
+    const mockVehiculosService = {
+      listarVehiculos: vi.fn().mockResolvedValue([stock]),
+      obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+      registrarVenta: vi.fn().mockResolvedValue({ success: true, ventaId: 'ven30', codigo: 'MC-030', ganancia: 500000 }),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+        cuentasService={mockCuentasService as unknown as any}
+        vehiculosService={mockVehiculosService as unknown as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
+    fireEvent.click(await screen.findByText('MC-030'));
+    fireEvent.change(await screen.findByLabelText(/precio de venta/i), { target: { value: '500000' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
+
+    expect(await screen.findByTestId('codigo-venta')).toHaveTextContent('MC-030');
+    expect(mockVehiculosService.registrarVenta).toHaveBeenCalledTimes(1);
+    expect(mockCuentasService.obtenerCuentasConSaldo.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mockVehiculosService.listarVehiculos.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('al abrir Vehículos muestra los vehículos que trae el servicio', async () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),

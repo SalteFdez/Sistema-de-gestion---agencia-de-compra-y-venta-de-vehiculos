@@ -98,6 +98,26 @@ export interface RegistrarCompraResult {
   avisoFoto?: string;
 }
 
+export interface CobroVenta {
+  cuentaId: string;
+  monto: number;
+}
+
+export interface RegistrarVentaParams {
+  vehiculoId: string;
+  precio: number;
+  comprador?: string;
+  cobros: CobroVenta[];
+}
+
+export interface RegistrarVentaResult {
+  success: boolean;
+  error?: string;
+  ventaId?: string;
+  codigo?: string;
+  ganancia?: number;
+}
+
 export interface CuentaSaldo {
   cuentaId: string;
   nombre: string;
@@ -125,6 +145,15 @@ export interface PagoDetalle {
   monto: number;
 }
 
+export interface VentaDetalle {
+  ventaId: string;
+  fecha: string;
+  comprador: string | null;
+  precioVenta: number;
+  ganancia: number;
+  cobros: PagoDetalle[];
+}
+
 export interface DetalleVehiculo {
   id: string;
   codigo: string;
@@ -141,6 +170,7 @@ export interface DetalleVehiculo {
   gastosAsignados: number;
   costoReal: number;
   pagos: PagoDetalle[];
+  venta: VentaDetalle | null;
 }
 
 export interface ObtenerDetalleResult {
@@ -237,6 +267,60 @@ export class VehiculosService {
     return { success: true, id: fila.id, codigo: fila.codigo, saldos, avisoFoto };
   }
 
+  async registrarVenta(params: RegistrarVentaParams): Promise<RegistrarVentaResult> {
+    if (!params.vehiculoId) {
+      return { success: false, error: 'Elegí un vehículo para vender' };
+    }
+    if (!(params.precio > 0)) {
+      return { success: false, error: 'El precio tiene que ser mayor que 0' };
+    }
+    if (params.cobros.some((c) => !(c.monto > 0))) {
+      return { success: false, error: 'Cada cobro tiene que ser mayor que 0' };
+    }
+    if (new Set(params.cobros.map((c) => c.cuentaId)).size !== params.cobros.length) {
+      return { success: false, error: 'No podés repetir una cuenta en los cobros' };
+    }
+    const suma = params.cobros.reduce((acc, c) => acc + c.monto, 0);
+    if (suma !== params.precio) {
+      const diferencia = Math.abs(params.precio - suma);
+      const detalle = suma < params.precio
+        ? `Faltan ${formatMoney(diferencia)}`
+        : `Sobran ${formatMoney(diferencia)}`;
+      return { success: false, error: `La suma de los cobros no coincide con el precio. ${detalle}` };
+    }
+
+    let data: unknown;
+    let error: { message: string } | null;
+    try {
+      ({ data, error } = await this.db.rpc('registrar_venta', {
+        p_vehiculo_id: params.vehiculoId,
+        p_precio: params.precio,
+        p_comprador: params.comprador?.trim() || null,
+        p_cobros: params.cobros.map((c) => ({ cuenta_id: c.cuentaId, monto: c.monto })),
+      }));
+    } catch {
+      // Sin señal: el pedido pudo llegar y guardarse sin que llegue la respuesta. Por eso no afirmamos
+      // que no se guardó; si se reintenta y ya estaba vendido, la RPC responde "ya está vendido" sin duplicar.
+      return {
+        success: false,
+        error: 'Sin conexión. No se pudo confirmar si se guardó: revisá el vehículo antes de reintentar.',
+      };
+    }
+    if (error) {
+      // La RPC es una sola transacción: si devuelve error, no quedó nada guardado
+      const mensaje = error.message || 'No se pudo registrar la venta';
+      return { success: false, error: `${mensaje}. No se guardó nada.` };
+    }
+
+    const fila = data as { venta_id: string; codigo: string; ganancia: number | string | null };
+    return {
+      success: true,
+      ventaId: fila.venta_id,
+      codigo: fila.codigo,
+      ganancia: Number(fila.ganancia ?? 0),
+    };
+  }
+
   async obtenerDetalle(id: string): Promise<ObtenerDetalleResult> {
     const { data, error } = await this.db
       .from('vehiculos')
@@ -277,6 +361,49 @@ export class VehiculosService {
       monto: Math.abs(Number(m.monto)) || 0,
     }));
 
+    // Venta: solo si el vehículo está vendido (la venta no anulada y sus cobros)
+    let venta: VentaDetalle | null = null;
+    if (fila.estado === 'vendido') {
+      const { data: filaVenta, error: errorVenta } = await this.db
+        .from('ventas')
+        .select('*')
+        .eq('vehiculo_id', id)
+        .eq('anulada', false)
+        .maybeSingle();
+      if (errorVenta) {
+        return { success: false, error: errorVenta.message };
+      }
+      if (filaVenta) {
+        const v = filaVenta as { id: string; comprador_texto: string | null; fecha: string; precio_total: number | string };
+        const { data: filasCobro, error: errorCobros } = await this.db
+          .from('movimientos')
+          .select('monto, cuenta:cuentas(nombre)')
+          .eq('venta_id', v.id)
+          .eq('tipo', 'venta_cobro')
+          .eq('anulado', false);
+        if (errorCobros) {
+          return { success: false, error: errorCobros.message };
+        }
+        const { data: filaGanancia, error: errorGanancia } = await this.db
+          .from('v_ganancia_venta')
+          .select('ganancia')
+          .eq('venta_id', v.id)
+          .maybeSingle();
+        if (errorGanancia) {
+          return { success: false, error: errorGanancia.message };
+        }
+        const cobros = (filasCobro ?? []) as Array<{ monto: number | string; cuenta: { nombre: string } | null }>;
+        venta = {
+          ventaId: v.id,
+          fecha: v.fecha,
+          comprador: v.comprador_texto ?? null,
+          precioVenta: Number(v.precio_total) || 0,
+          ganancia: Number((filaGanancia as { ganancia?: number | string } | null)?.ganancia) || 0,
+          cobros: cobros.map((c) => ({ cuentaNombre: c.cuenta?.nombre ?? '', monto: Math.abs(Number(c.monto)) || 0 })),
+        };
+      }
+    }
+
     return {
       success: true,
       detalle: {
@@ -295,6 +422,7 @@ export class VehiculosService {
         gastosAsignados: Number(filaCosto.gastos_asignados) || 0,
         costoReal: Number(filaCosto.costo_real ?? fila.valor_ingreso) || 0,
         pagos,
+        venta,
       },
     };
   }

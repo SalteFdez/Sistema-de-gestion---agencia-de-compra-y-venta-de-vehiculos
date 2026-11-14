@@ -542,6 +542,155 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('registrarVenta', () => {
+    it('no registra si no hay vehículo elegido y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVenta({
+        vehiculoId: '',
+        precio: 6000000,
+        cobros: [{ cuentaId: 'c1', monto: 6000000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/elegí un vehículo/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si el precio no es mayor que 0 y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVenta({
+        vehiculoId: 'v1',
+        precio: 0,
+        cobros: [{ cuentaId: 'c1', monto: 1 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/precio.*mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si algún cobro es 0 o negativo y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVenta({
+        vehiculoId: 'v1',
+        precio: 6000000,
+        cobros: [
+          { cuentaId: 'c1', monto: 6000000 },
+          { cuentaId: 'c2', monto: 0 },
+        ],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/cada cobro.*mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si una cuenta aparece repetida en los cobros y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVenta({
+        vehiculoId: 'v1',
+        precio: 6000000,
+        cobros: [
+          { cuentaId: 'c1', monto: 4000000 },
+          { cuentaId: 'c1', monto: 2000000 },
+        ],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/repetir una cuenta/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si los cobros no suman el precio, e indica cuánto falta o sobra', async () => {
+      const service = new VehiculosService(mockDb);
+      const faltan = await service.registrarVenta({
+        vehiculoId: 'v1',
+        precio: 6000000,
+        cobros: [
+          { cuentaId: 'c1', monto: 4000000 },
+          { cuentaId: 'c2', monto: 1500000 },
+        ],
+      });
+      const sobran = await service.registrarVenta({
+        vehiculoId: 'v1',
+        precio: 6000000,
+        cobros: [{ cuentaId: 'c1', monto: 6500000 }],
+      });
+
+      expect(faltan.error).toMatch(/faltan \$ 500\.000/i);
+      expect(sobran.error).toMatch(/sobran \$ 500\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('con datos válidos llama a registrar_venta y devuelve id, código y ganancia', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: { venta_id: 'ven1', codigo: 'MC-007', fecha: '2026-11-14', ganancia: 1500000 },
+        error: null,
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVenta({
+        vehiculoId: 'v7',
+        precio: 6000000,
+        comprador: 'Pedro',
+        cobros: [
+          { cuentaId: 'c1', monto: 4000000 },
+          { cuentaId: 'c2', monto: 2000000 },
+        ],
+      });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith(
+        'registrar_venta',
+        expect.objectContaining({
+          p_vehiculo_id: 'v7',
+          p_precio: 6000000,
+          p_comprador: 'Pedro',
+          p_cobros: [
+            { cuenta_id: 'c1', monto: 4000000 },
+            { cuenta_id: 'c2', monto: 2000000 },
+          ],
+        })
+      );
+      expect(res.success).toBe(true);
+      expect(res.ventaId).toBe('ven1');
+      expect(res.codigo).toBe('MC-007');
+      expect(res.ganancia).toBe(1500000);
+    });
+
+    it('si la RPC dice que el vehículo ya está vendido, avisa claro y no devuelve código', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'MC-007 ya está vendido' },
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVenta({
+        vehiculoId: 'v7',
+        precio: 6000000,
+        cobros: [{ cuentaId: 'c1', monto: 6000000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('MC-007 ya está vendido. No se guardó nada.');
+      expect(res.codigo).toBeUndefined();
+    });
+
+    it('si falla la red al registrar la venta, devuelve error sin lanzar y avisa que no se guardó nada', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new Error('Failed to fetch'));
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVenta({
+        vehiculoId: 'v7',
+        precio: 6000000,
+        cobros: [{ cuentaId: 'c1', monto: 6000000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/no se pudo confirmar si se guardó/i);
+      expect(res.codigo).toBeUndefined();
+    });
+  });
+
   describe('cuentasQueQuedaranNegativas', () => {
     it('devuelve solo las cuentas que quedarían con saldo negativo, con el saldo resultante', () => {
       const resultado = cuentasQueQuedaranNegativas(
@@ -800,6 +949,72 @@ describe('VehiculosService', () => {
       expect(res.success).toBe(false);
       expect(res.error).toMatch(/failed to fetch/i);
       expect(res.detalle).toBeUndefined();
+    });
+  });
+
+  describe('obtenerDetalle: venta', () => {
+    it('un vehículo vendido trae su venta: fecha, comprador, precio, cobros y ganancia', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filaVehiculo = {
+        id: 'v7', codigo: 'MC-007', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+        estado: 'vendido', origen: 'compra', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 4500000,
+      };
+      const cobros = [
+        { monto: 4000000, cuenta: { nombre: 'Caja efectivo' } },
+        { monto: 2000000, cuenta: { nombre: 'Banco Galicia' } },
+      ];
+      let llamadasMovimientos = 0;
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'movimientos') {
+          // 1ª consulta: pagos de la compra (ninguno aquí); 2ª: cobros de la venta
+          llamadasMovimientos += 1;
+          return { select: vi.fn().mockReturnValue(consulta({ data: llamadasMovimientos === 1 ? [] : cobros, error: null })) };
+        }
+        if (tabla === 'ventas') {
+          return {
+            select: vi.fn().mockReturnValue(
+              consulta({
+                data: { id: 'ven1', comprador_texto: 'Pedro', fecha: '2026-11-14', precio_total: 6000000 },
+                error: null,
+              })
+            ),
+          };
+        }
+        if (tabla === 'v_ganancia_venta') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: { ganancia: 1500000 }, error: null })) };
+        }
+        if (tabla === 'v_costo_vehiculo') {
+          return {
+            select: vi.fn().mockReturnValue(
+              consulta({ data: { vehiculo_id: 'v7', valor_ingreso: 4500000, gastos_asignados: 0, costo_real: 4500000 }, error: null })
+            ),
+          };
+        }
+        return { select: vi.fn().mockReturnValue(consulta({ data: filaVehiculo, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v7');
+
+      expect(res.detalle?.venta).toEqual({
+        ventaId: 'ven1',
+        fecha: '2026-11-14',
+        comprador: 'Pedro',
+        precioVenta: 6000000,
+        ganancia: 1500000,
+        cobros: [
+          { cuentaNombre: 'Caja efectivo', monto: 4000000 },
+          { cuentaNombre: 'Banco Galicia', monto: 2000000 },
+        ],
+      });
     });
   });
 

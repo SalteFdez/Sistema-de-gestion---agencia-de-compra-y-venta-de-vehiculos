@@ -20,6 +20,9 @@ const ETIQUETA_ORIGEN: Record<DetalleVehiculo['origen'], string> = {
   inventario_inicial: 'Stock existente',
 };
 
+// Pérdida con el signo menos típico: "$ −200.000"
+const formatoNegativo = (n: number): string => `$ −${formatMoney(Math.abs(n)).replace('$ ', '')}`;
+
 // "2026-11-14" -> "14/11/2026" (sin pasar por Date, para no desfasar la fecha por zona horaria)
 const formatoFecha = (iso: string): string => {
   const [anio, mes, dia] = iso.split('-');
@@ -122,6 +125,44 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({ detall
           {detalle.valorIngreso === 0 && <p className="text-xs text-amber-700 mt-1">Costo desconocido</p>}
         </div>
       </section>
+
+      {detalle.venta && (
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mt-4">
+          <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Venta</h2>
+          <dl className="text-sm text-gray-700 space-y-1">
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Fecha de venta</dt>
+              <dd>{formatoFecha(detalle.venta.fecha)}</dd>
+            </div>
+            {detalle.venta.comprador && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Comprador</dt>
+                <dd>{detalle.venta.comprador}</dd>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Precio de venta</dt>
+              <dd>{formatMoney(detalle.venta.precioVenta)}</dd>
+            </div>
+          </dl>
+
+          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mt-3 mb-1">Cómo se cobró</h3>
+          <ul className="space-y-1 text-sm text-gray-800">
+            {detalle.venta.cobros.map((c, i) => (
+              <li key={i} className="flex justify-between">
+                <span>{c.cuentaNombre}</span>
+                <span className="font-medium">{formatMoney(c.monto)}</span>
+              </li>
+            ))}
+          </ul>
+
+          {detalle.venta.ganancia < 0 ? (
+            <p className="text-lg font-bold text-red-600 mt-3">Pérdida {formatoNegativo(detalle.venta.ganancia)}</p>
+          ) : (
+            <p className="text-lg font-bold text-green-700 mt-3">Ganancia {formatMoney(detalle.venta.ganancia)}</p>
+          )}
+        </section>
+      )}
     </div>
   );
 };

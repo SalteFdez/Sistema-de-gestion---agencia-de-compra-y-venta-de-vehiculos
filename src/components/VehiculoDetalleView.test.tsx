@@ -20,6 +20,7 @@ const detalleBase: DetalleVehiculo = {
   gastosAsignados: 0,
   costoReal: 3000000,
   pagos: [],
+  venta: null,
 };
 
 describe('VehiculoDetalleView', () => {
@@ -86,6 +87,64 @@ describe('VehiculoDetalleView', () => {
     );
 
     expect(screen.getByText('Costo desconocido')).toBeInTheDocument();
+  });
+
+  it('un vehículo vendido muestra el bloque Venta: fecha, comprador, precio, cómo se cobró y ganancia', () => {
+    render(
+      <VehiculoDetalleView
+        detalle={{
+          ...detalleBase,
+          estado: 'vendido',
+          venta: {
+            ventaId: 'ven1',
+            fecha: '2026-11-14',
+            comprador: 'Pedro',
+            precioVenta: 6000000,
+            ganancia: 1500000,
+            cobros: [
+              { cuentaNombre: 'Caja efectivo', monto: 4000000 },
+              { cuentaNombre: 'Banco Galicia', monto: 2000000 },
+            ],
+          },
+        }}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+      />
+    );
+
+    const seccion = screen.getByRole('heading', { name: 'Venta' }).closest('section') as HTMLElement;
+    expect(within(seccion).getByText('14/11/2026')).toBeInTheDocument();
+    expect(within(seccion).getByText('Pedro')).toBeInTheDocument();
+    expect(within(seccion).getByText('$ 6.000.000')).toBeInTheDocument();
+    expect(within(seccion).getByText('Cómo se cobró')).toBeInTheDocument();
+    expect(within(seccion).getByText('Caja efectivo')).toBeInTheDocument();
+    expect(within(seccion).getByText('$ 4.000.000')).toBeInTheDocument();
+    expect(within(seccion).getByText('Ganancia $ 1.500.000')).toBeInTheDocument();
+  });
+
+  it('una venta por debajo del costo muestra "Pérdida" en rojo, y sin comprador no muestra la fila', () => {
+    render(
+      <VehiculoDetalleView
+        detalle={{
+          ...detalleBase,
+          estado: 'vendido',
+          venta: {
+            ventaId: 'ven2',
+            fecha: '2026-11-14',
+            comprador: null,
+            precioVenta: 2800000,
+            ganancia: -200000,
+            cobros: [{ cuentaNombre: 'Caja efectivo', monto: 2800000 }],
+          },
+        }}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+      />
+    );
+
+    const perdida = screen.getByText('Pérdida $ −200.000');
+    expect(perdida).toHaveClass('text-red-600');
+    expect(screen.queryByText('Comprador')).not.toBeInTheDocument();
   });
 
   it('un vehículo de stock existente dice que no tiene pagos registrados', () => {
