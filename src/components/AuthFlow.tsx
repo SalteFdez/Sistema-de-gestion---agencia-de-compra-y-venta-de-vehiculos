@@ -9,6 +9,7 @@ import { CuentasView } from './CuentasView';
 import { VehiculosView, type FiltroEstado } from './VehiculosView';
 import { CompraVehiculoView } from './CompraVehiculoView';
 import { VenderVehiculoView } from './VenderVehiculoView';
+import { RegistrarGastoView, type CategoriaGasto } from './RegistrarGastoView';
 import type { VehiculosService, VehiculoItem, DetalleVehiculo } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
@@ -36,7 +37,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<
-    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender'
+    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto'
   >('home');
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
   const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
@@ -70,6 +71,18 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [inventarioError, setInventarioError] = useState<boolean>(false);
 
   const [vehiculosError, setVehiculosError] = useState<boolean>(false);
+  const [categoriasGasto, setCategoriasGasto] = useState<CategoriaGasto[]>([]);
+  // Vehículo ya elegido cuando el gasto se abre desde su detalle ("Agregar gasto")
+  const [gastoPreseleccionado, setGastoPreseleccionado] = useState<string | null>(null);
+
+  const loadCategoriasGasto = useCallback(async () => {
+    if (!vehiculosService) return;
+    try {
+      setCategoriasGasto(await vehiculosService.listarCategorias('gasto'));
+    } catch {
+      // Sin categorías, la pantalla de gasto muestra la grilla vacía
+    }
+  }, [vehiculosService]);
   // Filtro de Vehículos: vive acá para sobrevivir a abrir el detalle y volver
   const [filtroVehiculos, setFiltroVehiculos] = useState<FiltroEstado>('stock');
 
@@ -285,6 +298,32 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
+    if (currentView === 'gasto') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <RegistrarGastoView
+            categorias={categoriasGasto}
+            cuentas={cuentas}
+            vehiculos={vehiculos}
+            vehiculoPreseleccionado={gastoPreseleccionado ?? undefined}
+            onVolver={() => setCurrentView('home')}
+            onIrACuentas={() => setCurrentView('cuentas')}
+            onRegistrar={
+              vehiculosService
+                ? async (params) => {
+                    const res = await vehiculosService.registrarGasto(params);
+                    if (res.success) {
+                      await Promise.all([loadCuentasData(), loadVehiculosData()]);
+                    }
+                    return res;
+                  }
+                : undefined
+            }
+          />
+        </main>
+      );
+    }
+
     if (currentView === 'vender') {
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
@@ -338,6 +377,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             detalle={detalleVehiculo}
             fotoUrl={fotoDetalle}
             onVolver={() => setCurrentView('vehiculos')}
+            onAgregarGasto={() => {
+              setGastoPreseleccionado(detalleVehiculo.id);
+              loadCuentasData();
+              void loadCategoriasGasto();
+              loadVehiculosData();
+              setCurrentView('gasto');
+            }}
           />
         </main>
       );
@@ -518,6 +564,23 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <span>Vender vehículo</span>
+            </button>
+          </div>
+
+          {/* Botón grande Registrar gasto */}
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                setGastoPreseleccionado(null);
+                loadCuentasData();
+                void loadCategoriasGasto();
+                loadVehiculosData();
+                setCurrentView('gasto');
+              }}
+              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+            >
+              <span>Registrar gasto</span>
             </button>
           </div>
 

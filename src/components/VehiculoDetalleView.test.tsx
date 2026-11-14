@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
 import type { DetalleVehiculo } from '../lib/vehiculos/vehiculos-service';
@@ -21,6 +21,7 @@ const detalleBase: DetalleVehiculo = {
   costoReal: 3000000,
   pagos: [],
   venta: null,
+  gastos: [],
 };
 
 describe('VehiculoDetalleView', () => {
@@ -145,6 +146,43 @@ describe('VehiculoDetalleView', () => {
     const perdida = screen.getByText('Pérdida $ −200.000');
     expect(perdida).toHaveClass('text-red-600');
     expect(screen.queryByText('Comprador')).not.toBeInTheDocument();
+  });
+
+  it('"Gastos asignados" lista cada gasto (fecha, categoría, descripción, monto) y su total', () => {
+    render(
+      <VehiculoDetalleView
+        detalle={{
+          ...detalleBase,
+          gastosAsignados: 250000,
+          costoReal: 3250000,
+          gastos: [
+            { fecha: '2026-11-14', categoria: 'Mecánica', descripcion: 'Pintura puerta', monto: 250000 },
+          ],
+        }}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+      />
+    );
+
+    // La fecha del gasto también aparece como fecha de ingreso: buscamos dentro de la lista de gastos
+    const lista = screen.getByText(/Pintura puerta/).closest('li') as HTMLElement;
+    expect(within(lista).getByText('14/11/2026')).toBeInTheDocument();
+    expect(screen.getByText(/Mecánica/)).toBeInTheDocument();
+    expect(screen.getByText(/Pintura puerta/)).toBeInTheDocument();
+    expect(screen.getAllByText('$ 250.000').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('Todavía no hay gastos cargados')).not.toBeInTheDocument();
+  });
+
+  it('el botón "Agregar gasto" llama a la acción para cargar un gasto de este vehículo', () => {
+    const onAgregarGasto = vi.fn();
+
+    render(
+      <VehiculoDetalleView detalle={detalleBase} fotoUrl={null} onVolver={vi.fn()} onAgregarGasto={onAgregarGasto} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar gasto/i }));
+
+    expect(onAgregarGasto).toHaveBeenCalledTimes(1);
   });
 
   it('un vehículo de stock existente dice que no tiene pagos registrados', () => {

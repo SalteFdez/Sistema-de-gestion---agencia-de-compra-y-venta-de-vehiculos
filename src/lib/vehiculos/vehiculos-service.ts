@@ -118,6 +118,23 @@ export interface RegistrarVentaResult {
   ganancia?: number;
 }
 
+export interface RegistrarGastoParams {
+  monto: number;
+  categoriaId: string;
+  cuentaId: string;
+  descripcion?: string;
+  /** null = gasto general del negocio; un id = gasto de ese vehículo */
+  vehiculoId: string | null;
+}
+
+export interface RegistrarGastoResult {
+  success: boolean;
+  error?: string;
+  gastoId?: string;
+  saldoCuenta?: number;
+  vehiculoCodigo?: string | null;
+}
+
 export interface CuentaSaldo {
   cuentaId: string;
   nombre: string;
@@ -154,6 +171,13 @@ export interface VentaDetalle {
   cobros: PagoDetalle[];
 }
 
+export interface GastoDetalle {
+  fecha: string;
+  categoria: string;
+  descripcion: string | null;
+  monto: number;
+}
+
 export interface DetalleVehiculo {
   id: string;
   codigo: string;
@@ -171,6 +195,7 @@ export interface DetalleVehiculo {
   costoReal: number;
   pagos: PagoDetalle[];
   venta: VentaDetalle | null;
+  gastos: GastoDetalle[];
 }
 
 export interface ObtenerDetalleResult {
@@ -267,6 +292,62 @@ export class VehiculosService {
     return { success: true, id: fila.id, codigo: fila.codigo, saldos, avisoFoto };
   }
 
+  async listarCategorias(tipo: 'gasto' | 'ingreso'): Promise<Array<{ id: string; nombre: string }>> {
+    const { data, error } = await this.db
+      .from('categorias')
+      .select('id, nombre, tipo, activa')
+      .eq('tipo', tipo)
+      .eq('activa', true)
+      .order('nombre', { ascending: true });
+    if (error) {
+      throw new Error(error.message);
+    }
+    const filas = (data ?? []) as Array<{ id: string; nombre: string }>;
+    return filas.map((f) => ({ id: f.id, nombre: f.nombre }));
+  }
+
+  async registrarGasto(params: RegistrarGastoParams): Promise<RegistrarGastoResult> {
+    if (!(params.monto > 0)) {
+      return { success: false, error: 'El monto tiene que ser mayor que 0' };
+    }
+    if (!params.categoriaId) {
+      return { success: false, error: 'Elegí una categoría' };
+    }
+    if (!params.cuentaId) {
+      return { success: false, error: 'Elegí una cuenta' };
+    }
+    if (params.vehiculoId === undefined) {
+      return { success: false, error: 'Elegí si el gasto es general o de un vehículo' };
+    }
+
+    let data: unknown;
+    let error: { message: string } | null;
+    try {
+      ({ data, error } = await this.db.rpc('registrar_gasto', {
+        p_monto: params.monto,
+        p_categoria_id: params.categoriaId,
+        p_cuenta_id: params.cuentaId,
+        p_descripcion: params.descripcion?.trim() || null,
+        p_vehiculo_id: params.vehiculoId,
+      }));
+    } catch {
+      // Sin señal: el pedido pudo llegar sin que vuelva la respuesta, así que no se afirma que no se guardó
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se guardó: revisá antes de reintentar.' };
+    }
+    if (error) {
+      // La RPC es una sola transacción: si devuelve error, no quedó nada guardado
+      return { success: false, error: `${error.message || 'No se pudo registrar el gasto'}. No se guardó nada.` };
+    }
+
+    const fila = data as { gasto_id: string; vehiculo_codigo: string | null; saldo_cuenta: number | string };
+    return {
+      success: true,
+      gastoId: fila.gasto_id,
+      vehiculoCodigo: fila.vehiculo_codigo ?? null,
+      saldoCuenta: Number(fila.saldo_cuenta) || 0,
+    };
+  }
+
   async registrarVenta(params: RegistrarVentaParams): Promise<RegistrarVentaResult> {
     if (!params.vehiculoId) {
       return { success: false, error: 'Elegí un vehículo para vender' };
@@ -361,6 +442,29 @@ export class VehiculosService {
       monto: Math.abs(Number(m.monto)) || 0,
     }));
 
+    // Gastos asignados a este vehículo, sin los anulados, con la categoría de cada uno
+    const { data: filasGasto, error: errorGastos } = await this.db
+      .from('asignaciones_gasto')
+      .select('monto, gasto:gastos(fecha, descripcion, anulado, categoria:categorias(nombre))')
+      .eq('vehiculo_id', id);
+    if (errorGastos) {
+      return { success: false, error: errorGastos.message };
+    }
+    const filasGastoLista = Array.isArray(filasGasto) ? filasGasto : [];
+    const gastos: GastoDetalle[] = (
+      filasGastoLista as Array<{
+        monto: number | string;
+        gasto: { fecha: string; descripcion: string | null; anulado: boolean; categoria: { nombre: string } | null } | null;
+      }>
+    )
+      .filter((a) => a.gasto !== null && a.gasto.anulado === false)
+      .map((a) => ({
+        fecha: a.gasto!.fecha,
+        categoria: a.gasto!.categoria?.nombre ?? '',
+        descripcion: a.gasto!.descripcion ?? null,
+        monto: Math.abs(Number(a.monto)) || 0,
+      }));
+
     // Venta: solo si el vehículo está vendido (la venta no anulada y sus cobros)
     let venta: VentaDetalle | null = null;
     if (fila.estado === 'vendido') {
@@ -423,6 +527,7 @@ export class VehiculosService {
         costoReal: Number(filaCosto.costo_real ?? fila.valor_ingreso) || 0,
         pagos,
         venta,
+        gastos,
       },
     };
   }

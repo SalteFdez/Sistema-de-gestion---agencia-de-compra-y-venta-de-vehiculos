@@ -6,6 +6,7 @@ export interface VehiculoDetalleViewProps {
   detalle: DetalleVehiculo;
   fotoUrl: string | null;
   onVolver: () => void;
+  onAgregarGasto?: () => void;
 }
 
 const ETIQUETA_ESTADO: Record<DetalleVehiculo['estado'], string> = {
@@ -29,7 +30,12 @@ const formatoFecha = (iso: string): string => {
   return `${dia}/${mes}/${anio}`;
 };
 
-export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({ detalle, fotoUrl, onVolver }) => {
+export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
+  detalle,
+  fotoUrl,
+  onVolver,
+  onAgregarGasto,
+}) => {
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
       <header className="flex justify-between items-center py-3 mb-4">
@@ -114,9 +120,33 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({ detall
             <dd>{formatMoney(detalle.gastosAsignados)}</dd>
           </div>
         </dl>
-        {detalle.gastosAsignados === 0 && (
-          <p className="text-xs text-gray-500 mt-1">Todavía no hay gastos cargados</p>
+        {(detalle.gastos ?? []).length > 0 ? (
+          <ul className="mt-3 space-y-1 text-sm text-gray-800">
+            {(detalle.gastos ?? []).map((g, i) => (
+              <li key={i} className="flex justify-between gap-2">
+                <span>
+                  <span className="text-gray-500">{formatoFecha(g.fecha)}</span> · {g.categoria}
+                  {g.descripcion ? ` · ${g.descripcion}` : ''}
+                </span>
+                <span className="font-medium">{formatMoney(g.monto)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          detalle.gastosAsignados === 0 && (
+            <p className="text-xs text-gray-500 mt-1">Todavía no hay gastos cargados</p>
+          )
         )}
+        {onAgregarGasto && (
+          <button
+            type="button"
+            onClick={onAgregarGasto}
+            className="w-full mt-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 text-sm font-medium rounded-lg"
+          >
+            Agregar gasto
+          </button>
+        )}
+
         <div className="mt-4 pt-3 border-t border-gray-200">
           <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">Costo real</span>
           <div data-testid="costo-real" className="text-3xl font-extrabold text-gray-900 mt-1">

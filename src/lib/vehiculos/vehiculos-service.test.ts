@@ -691,6 +691,159 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('registrarGasto', () => {
+    it('no registra si el monto no es mayor que 0 y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGasto({
+        monto: 0,
+        categoriaId: 'cat1',
+        cuentaId: 'c1',
+        vehiculoId: null,
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/monto.*mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si falta la categoría y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGasto({
+        monto: 250000,
+        categoriaId: '',
+        cuentaId: 'c1',
+        vehiculoId: null,
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/elegí una categoría/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si falta la cuenta y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGasto({
+        monto: 250000,
+        categoriaId: 'cat1',
+        cuentaId: '',
+        vehiculoId: null,
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/elegí una cuenta/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si no se eligió General ni un vehículo y no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGasto({
+        monto: 250000,
+        categoriaId: 'cat1',
+        cuentaId: 'c1',
+        vehiculoId: undefined as unknown as null,
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/general o de un vehículo/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('con datos válidos llama a registrar_gasto y devuelve id, código del vehículo y saldo de la cuenta', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: { gasto_id: 'g1', fecha: '2026-11-14', vehiculo_codigo: 'MC-010', saldo_cuenta: 750000 },
+        error: null,
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGasto({
+        monto: 250000,
+        categoriaId: 'cat1',
+        cuentaId: 'c1',
+        descripcion: 'Pintura puerta',
+        vehiculoId: 'v10',
+      });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith(
+        'registrar_gasto',
+        expect.objectContaining({
+          p_monto: 250000,
+          p_categoria_id: 'cat1',
+          p_cuenta_id: 'c1',
+          p_descripcion: 'Pintura puerta',
+          p_vehiculo_id: 'v10',
+        })
+      );
+      expect(res.success).toBe(true);
+      expect(res.gastoId).toBe('g1');
+      expect(res.vehiculoCodigo).toBe('MC-010');
+      expect(res.saldoCuenta).toBe(750000);
+    });
+
+    it('si la RPC falla, avisa que no se guardó nada y no devuelve gasto', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGasto({
+        monto: 250000,
+        categoriaId: 'cat1',
+        cuentaId: 'c1',
+        vehiculoId: null,
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/failed to fetch.*no se guardó nada/i);
+      expect(res.gastoId).toBeUndefined();
+    });
+
+    it('si falla la red al registrar el gasto, devuelve error sin lanzar', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new Error('Network down'));
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGasto({
+        monto: 250000,
+        categoriaId: 'cat1',
+        cuentaId: 'c1',
+        vehiculoId: null,
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sin conexión/i);
+    });
+
+    it('lista las categorías de gasto activas, ordenadas por nombre', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          order: vi.fn(() => b),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filas = [{ id: 'cat1', nombre: 'Mecánica' }, { id: 'cat2', nombre: 'Repuestos' }];
+      const select = vi.fn().mockReturnValue(consulta({ data: filas, error: null }));
+      mockDb.from = vi.fn().mockReturnValue({ select });
+
+      const service = new VehiculosService(mockDb);
+      const categorias = await service.listarCategorias('gasto');
+
+      expect(mockDb.from).toHaveBeenCalledWith('categorias');
+      expect(categorias).toEqual([
+        { id: 'cat1', nombre: 'Mecánica' },
+        { id: 'cat2', nombre: 'Repuestos' },
+      ]);
+    });
+
+    it('el gasto usa el mismo cálculo de saldo negativo que la compra', () => {
+      const negativas = cuentasQueQuedaranNegativas(
+        [{ cuentaId: 'c1', monto: 250000 }],
+        [{ cuentaId: 'c1', nombre: 'Caja efectivo', saldo: 100000 }]
+      );
+
+      expect(negativas).toEqual([{ cuentaId: 'c1', nombre: 'Caja efectivo', saldoResultante: -150000 }]);
+    });
+  });
+
   describe('cuentasQueQuedaranNegativas', () => {
     it('devuelve solo las cuentas que quedarían con saldo negativo, con el saldo resultante', () => {
       const resultado = cuentasQueQuedaranNegativas(
@@ -949,6 +1102,51 @@ describe('VehiculosService', () => {
       expect(res.success).toBe(false);
       expect(res.error).toMatch(/failed to fetch/i);
       expect(res.detalle).toBeUndefined();
+    });
+  });
+
+  describe('obtenerDetalle: gastos', () => {
+    it('trae los gastos asignados al vehículo con su categoría, sin los anulados', async () => {
+      const consulta = (resultado: unknown) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => b),
+          maybeSingle: vi.fn().mockResolvedValue(resultado),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve(resultado).then(ok, ko),
+        };
+        return b;
+      };
+      const filaVehiculo = {
+        id: 'v8', codigo: 'MC-008', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+        estado: 'en_stock', origen: 'compra', fecha_ingreso: '2026-11-13', vendedor_texto: null, valor_ingreso: 3000000,
+      };
+      const asignaciones = [
+        { monto: 250000, gasto: { fecha: '2026-11-14', descripcion: 'Pintura puerta', anulado: false, categoria: { nombre: 'Mecánica' } } },
+        { monto: 100000, gasto: { fecha: '2026-11-10', descripcion: null, anulado: true, categoria: { nombre: 'Repuestos' } } },
+      ];
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'asignaciones_gasto') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: asignaciones, error: null })) };
+        }
+        if (tabla === 'movimientos') {
+          return { select: vi.fn().mockReturnValue(consulta({ data: [], error: null })) };
+        }
+        if (tabla === 'v_costo_vehiculo') {
+          return {
+            select: vi.fn().mockReturnValue(
+              consulta({ data: { vehiculo_id: 'v8', valor_ingreso: 3000000, gastos_asignados: 250000, costo_real: 3250000 }, error: null })
+            ),
+          };
+        }
+        return { select: vi.fn().mockReturnValue(consulta({ data: filaVehiculo, error: null })) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v8');
+
+      expect(res.detalle?.gastos).toEqual([
+        { fecha: '2026-11-14', categoria: 'Mecánica', descripcion: 'Pintura puerta', monto: 250000 },
+      ]);
     });
   });
 
