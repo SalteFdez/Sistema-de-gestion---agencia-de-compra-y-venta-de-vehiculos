@@ -23,13 +23,34 @@ const ETIQUETA_TIPO: Record<string, string> = {
   venta_cobro: 'Cobro de venta',
   gasto: 'Gasto',
   ingreso_otro: 'Ingreso',
+  aporte_socio: 'Aporte de socio',
+  retiro_socio: 'Retiro de socio',
+  transferencia_salida: 'Pase',
+  transferencia_entrada: 'Pase',
 };
 
 // Resumen de lo que se va a anular: "el ingreso de $ 80.000 · Comisión · Banco"
 const textoAnulacion = (m: MovimientoItem): string => {
+  // Anular una pata anula el pase completo: la plata vuelve de la cuenta que recibió a la que envió
+  if (m.tipo === 'transferencia_salida' || m.tipo === 'transferencia_entrada') {
+    const [desde, hasta] =
+      m.tipo === 'transferencia_salida'
+        ? [m.cuentaContraparte, m.cuentaNombre]
+        : [m.cuentaNombre, m.cuentaContraparte];
+    return `el pase completo: vuelven ${formatMoney(Math.abs(m.monto))} de ${desde ?? ''} a ${hasta ?? ''}`;
+  }
   const etiqueta = (ETIQUETA_TIPO[m.tipo] ?? m.tipo).toLowerCase();
   const concepto = [m.descripcion ?? m.categoriaNombre, m.vehiculoCodigo].filter(Boolean).join(' · ');
   return `el ${etiqueta} de ${formatMoney(Math.abs(m.monto))}${concepto ? ` · ${concepto}` : ''}, de ${m.cuentaNombre}`;
+};
+
+// Título de la fila: aporte y retiro dicen de qué socio son; el resto usa la descripción o la etiqueta
+const tituloMovimiento = (m: MovimientoItem): string => {
+  if (m.tipo === 'aporte_socio') return `Aporte de ${m.socioNombre ?? ''}`;
+  if (m.tipo === 'retiro_socio') return `Retiro de ${m.socioNombre ?? ''}`;
+  if (m.tipo === 'transferencia_salida') return `Pase a ${m.cuentaContraparte ?? ''}`;
+  if (m.tipo === 'transferencia_entrada') return `Pase desde ${m.cuentaContraparte ?? ''}`;
+  return m.descripcion ?? ETIQUETA_TIPO[m.tipo];
 };
 
 // Día y mes de un timestamp en hora de Buenos Aires: "14/11"
@@ -45,7 +66,7 @@ const diaMesBA = (iso: string): string => {
 };
 
 // Lo que entra a una cuenta suma (verde); lo que sale resta (rojo)
-const TIPOS_QUE_ENTRAN = new Set(['saldo_inicial', 'venta_cobro', 'ingreso_otro']);
+const TIPOS_QUE_ENTRAN = new Set(['saldo_inicial', 'venta_cobro', 'ingreso_otro', 'transferencia_entrada', 'aporte_socio']);
 
 const formatoFecha = (iso: string): string => {
   const [anio, mes, dia] = iso.split('-');
@@ -107,7 +128,7 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
                 <span>{ETIQUETA_TIPO[m.tipo] ?? m.tipo}</span>
               </div>
               <div className="flex justify-between items-baseline mt-1">
-                <span className="text-sm text-gray-900">{m.descripcion ?? ETIQUETA_TIPO[m.tipo]}</span>
+                <span className="text-sm text-gray-900">{tituloMovimiento(m)}</span>
                 <span className={`text-sm font-bold ${colorMonto}`}>
                   {signo} {formatMoney(Math.abs(m.monto))}
                 </span>

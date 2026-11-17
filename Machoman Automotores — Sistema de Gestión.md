@@ -395,14 +395,17 @@ La etiqueta **[E1]**, **[E2]** o **[E3]** indica en qué etapa se implementa.
 
 ## 12. Preguntas abiertas
 
-No bloquean la Etapa 1, pero hay que responderlas antes de la Etapa 2:
+**Resueltas (2026-11-16):**
 
-1. ¿Se manejan vehículos en **consignación** (de terceros, que se venden por cuenta de otro)?
-2. ¿Las ganancias se reparten entre socios? ¿Hace falta calcular la parte de cada uno?
-3. ¿Hace falta registrar papeles y trámites del vehículo (08, verificación policial, deuda de patentes, multas)?
-4. ¿Alguna financiación lleva interés o recargo?
-5. ¿Una compra puede pagarse con varias cuentas o con permuta de un vehículo propio?
-6. Lista definitiva de **categorías** de gasto e ingreso (sale de la planilla de la Etapa 0).
+1. **Consignación:** no se manejan vehículos de terceros. Todo lo que se vende es propio.
+2. **Reparto de ganancias entre socios:** no por ahora. Alcanza con registrar aportes y retiros por socio (E2-07).
+3. **Financiación:** sin interés ni recargo. Las cuotas suman exactamente lo financiado; si se quiere cobrar más, se incluye en el precio de venta.
+4. **Compra con varias cuentas:** sí, resuelto en E1-04. La compra con permuta de un vehículo propio queda fuera.
+5. **Categorías:** se usa la semilla de E1-07 hasta que exista la pantalla para administrarlas.
+
+**Siguen abiertas:**
+
+- ¿Hace falta registrar papeles y trámites del vehículo (08, verificación policial, deuda de patentes, multas)?
 
 ## 13. Próximos pasos
 

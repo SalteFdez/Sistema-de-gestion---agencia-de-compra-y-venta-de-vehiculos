@@ -11,6 +11,9 @@ import { CompraVehiculoView } from './CompraVehiculoView';
 import { VenderVehiculoView } from './VenderVehiculoView';
 import { RegistrarGastoView, type CategoriaGasto } from './RegistrarGastoView';
 import { MovimientosView } from './MovimientosView';
+import { MoverPlataView } from './MoverPlataView';
+import { PasarPlataView } from './PasarPlataView';
+import { MovimientoSocioView } from './MovimientoSocioView';
 import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion } from '../lib/vehiculos/vehiculos-service';
 import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
@@ -39,7 +42,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<
-    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos'
+    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos' | 'mover_plata' | 'pasar_plata' | 'aporte_socio' | 'retiro_socio'
   >('home');
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
   const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
@@ -131,6 +134,17 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       setVehiculosError(false);
     } catch {
       setVehiculosError(true);
+    }
+  }, [vehiculosService]);
+
+  // Socios para aporte y retiro (se cargan al abrir esos formularios)
+  const [socios, setSocios] = useState<Array<{ id: string; nombre: string }>>([]);
+  const loadSocios = useCallback(async () => {
+    if (!vehiculosService) return;
+    try {
+      setSocios(await vehiculosService.listarSocios());
+    } catch {
+      // Sin socios, el formulario muestra solo el socio que carga
     }
   }, [vehiculosService]);
 
@@ -335,6 +349,70 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
+    if (currentView === 'mover_plata') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <MoverPlataView
+            onPasar={() => setCurrentView('pasar_plata')}
+            onAporte={() => {
+              void loadSocios();
+              setCurrentView('aporte_socio');
+            }}
+            onRetiro={() => {
+              void loadSocios();
+              setCurrentView('retiro_socio');
+            }}
+            onVolver={() => setCurrentView('home')}
+          />
+        </main>
+      );
+    }
+
+    if (currentView === 'pasar_plata') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <PasarPlataView
+            cuentas={cuentas.map((c) => ({ id: c.id, nombre: c.nombre, saldo: c.saldo }))}
+            onRegistrar={async (params) => {
+              if (!vehiculosService) return { success: false, error: 'No hay conexión con el servicio de movimientos' };
+              const res = await vehiculosService.transferir(params);
+              if (res.success) {
+                await Promise.all([loadCuentasData(), loadMovimientos(0)]);
+              }
+              return res;
+            }}
+            onVolver={() => setCurrentView('mover_plata')}
+          />
+        </main>
+      );
+    }
+
+    if (currentView === 'aporte_socio' || currentView === 'retiro_socio') {
+      const modo = currentView === 'aporte_socio' ? 'aporte' : 'retiro';
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <MovimientoSocioView
+            modo={modo}
+            socios={socios}
+            socioActualId={linkedUser?.id ?? ''}
+            cuentas={cuentas.map((c) => ({ id: c.id, nombre: c.nombre, saldo: c.saldo }))}
+            onRegistrar={async (params) => {
+              if (!vehiculosService) return { success: false, error: 'No hay conexión con el servicio de movimientos' };
+              const res =
+                modo === 'aporte'
+                  ? await vehiculosService.registrarAporte(params)
+                  : await vehiculosService.registrarRetiro(params);
+              if (res.success) {
+                await Promise.all([loadCuentasData(), loadMovimientos(0)]);
+              }
+              return res;
+            }}
+            onVolver={() => setCurrentView('mover_plata')}
+          />
+        </main>
+      );
+    }
+
     if (currentView === 'movimientos') {
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
@@ -345,13 +423,17 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             onAnular={
               vehiculosService
                 ? async (m, motivo) => {
-                    const res = await vehiculosService.anularMovimiento({
-                      movimientoId: m.id,
-                      gastoId: m.gastoId,
-                      motivo,
-                      tipo: m.tipo,
-                      anulado: m.anulado,
-                    });
+                    // Anular una pata de pase anula el pase completo, por su RPC propia
+                    const esPase = m.tipo === 'transferencia_salida' || m.tipo === 'transferencia_entrada';
+                    const res = esPase
+                      ? await vehiculosService.anularTransferencia({ movimientoId: m.id, motivo })
+                      : await vehiculosService.anularMovimiento({
+                          movimientoId: m.id,
+                          gastoId: m.gastoId,
+                          motivo,
+                          tipo: m.tipo,
+                          anulado: m.anulado,
+                        });
                     if (res.success) {
                       await Promise.all([loadMovimientos(0), loadCuentasData(), loadVehiculosData()]);
                     }
@@ -737,6 +819,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               className="w-full py-4 px-6 bg-gray-800 hover:bg-gray-900 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <span>Movimientos</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentView('mover_plata')}
+              className="w-full py-4 px-6 bg-gray-800 hover:bg-gray-900 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+            >
+              <span>Mover plata</span>
             </button>
           </div>
 

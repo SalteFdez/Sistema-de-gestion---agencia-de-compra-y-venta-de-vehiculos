@@ -33,6 +33,7 @@ export interface CargarStockResult {
 /** Consulta de lectura encadenable (eq / order); al await devuelve { data, error }. */
 export interface Consulta extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
   eq: (col: string, value: unknown) => Consulta;
+  in: (col: string, values: unknown[]) => Promise<{ data: unknown; error: { message: string } | null }>;
   order: (col: string, options: { ascending: boolean }) => Consulta;
   range: (desde: number, hasta: number) => Consulta;
   maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>;
@@ -137,9 +138,39 @@ export interface MovimientoItem {
   motivoAnulacion: string | null;
   gastoId: string | null;
   ventaId: string | null;
+  /** Agrupa las dos patas de un pase */
+  transferenciaId?: string | null;
+  /** Para un pase: la cuenta de la otra pata ("Pase a Banco") */
+  cuentaContraparte?: string | null;
+  /** Para un aporte o un retiro: el socio */
+  socioNombre?: string | null;
 }
 
 export const TAMANO_PAGINA_MOVIMIENTOS = 50;
+
+export interface TransferirParams {
+  origenId: string;
+  destinoId: string;
+  monto: number;
+  descripcion?: string;
+}
+
+export interface TransferirResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface MovimientoSocioParams {
+  socioId: string;
+  cuentaId: string;
+  monto: number;
+  descripcion?: string;
+}
+
+export interface MovimientoSocioResult {
+  success: boolean;
+  error?: string;
+}
 
 export interface AnularVentaParams {
   ventaId: string;
@@ -380,6 +411,7 @@ export class VehiculosService {
       .from('movimientos')
       .select(
         'id, fecha, tipo, monto, descripcion, anulado, anulado_at, motivo_anulacion, gasto_id, venta_id, vehiculo_id, ' +
+          'transferencia_id, socio_id, socio:usuarios!socio_id(nombre), ' +
           'cuenta:cuentas(nombre), vehiculo:vehiculos(codigo), categoria:categorias(nombre), ' +
           'creador:usuarios!created_by(nombre), anulador:usuarios!anulado_por(nombre)'
       )
@@ -400,6 +432,9 @@ export class VehiculosService {
       gasto_id: string | null;
       venta_id: string | null;
       vehiculo_id: string | null;
+      transferencia_id: string | null;
+      socio_id: string | null;
+      socio: { nombre: string } | null;
       cuenta: { nombre: string } | null;
       vehiculo: { codigo: string } | null;
       categoria: { nombre: string } | null;
@@ -407,8 +442,28 @@ export class VehiculosService {
       anulador: { nombre: string } | null;
     };
     const filas = (Array.isArray(data) ? data : []) as Fila[];
+
+    // Las patas de los pases de esta página: la otra pata da el nombre de la cuenta contraparte
+    const idsTransferencia = [...new Set(filas.map((f) => f.transferencia_id).filter((t): t is string => !!t))];
+    const patas: Array<{ id: string; transferencia_id: string; cuenta: { nombre: string } | null }> = [];
+    if (idsTransferencia.length > 0) {
+      const { data: otras, error: errorOtras } = await this.db
+        .from('movimientos')
+        .select('id, transferencia_id, cuenta:cuentas(nombre)')
+        .in('transferencia_id', idsTransferencia);
+      if (errorOtras) {
+        throw new Error(errorOtras.message);
+      }
+      patas.push(...((Array.isArray(otras) ? otras : []) as typeof patas));
+    }
+
     return filas.map((f) => ({
       id: f.id,
+      transferenciaId: f.transferencia_id ?? null,
+      cuentaContraparte: f.transferencia_id
+        ? patas.find((p) => p.transferencia_id === f.transferencia_id && p.id !== f.id)?.cuenta?.nombre ?? null
+        : null,
+      socioNombre: f.socio?.nombre ?? null,
       fecha: f.fecha,
       tipo: f.tipo,
       monto: Number(f.monto) || 0,
@@ -425,6 +480,87 @@ export class VehiculosService {
       gastoId: f.gasto_id ?? null,
       ventaId: f.venta_id ?? null,
     }));
+  }
+
+  async transferir(params: TransferirParams): Promise<TransferirResult> {
+    if (params.origenId === params.destinoId) {
+      return { success: false, error: 'Elegí dos cuentas distintas' };
+    }
+    if (!(params.monto > 0)) {
+      return { success: false, error: 'El monto tiene que ser mayor que 0' };
+    }
+    let error: { message: string } | null;
+    try {
+      ({ error } = await this.db.rpc('transferir', {
+        p_origen_id: params.origenId,
+        p_destino_id: params.destinoId,
+        p_monto: params.monto,
+        p_descripcion: params.descripcion ?? null,
+      }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se pasó la plata: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message}. No se pasó nada.` };
+    }
+    return { success: true };
+  }
+
+  async registrarAporte(params: MovimientoSocioParams): Promise<MovimientoSocioResult> {
+    return this.registrarMovimientoSocio('registrar_aporte', params);
+  }
+
+  async registrarRetiro(params: MovimientoSocioParams): Promise<MovimientoSocioResult> {
+    return this.registrarMovimientoSocio('registrar_retiro', params);
+  }
+
+  async anularTransferencia(params: { movimientoId: string; motivo: string }): Promise<{ success: boolean; error?: string }> {
+    if (!params.motivo?.trim()) {
+      return { success: false, error: 'El motivo es obligatorio' };
+    }
+    const { error } = await this.db.rpc('anular_transferencia', {
+      p_movimiento_id: params.movimientoId,
+      p_motivo: params.motivo.trim(),
+    });
+    if (error) {
+      return { success: false, error: `${error.message}. No se anuló nada.` };
+    }
+    return { success: true };
+  }
+
+  async listarSocios(): Promise<Array<{ id: string; nombre: string }>> {
+    const { data } = await this.db.from('usuarios').select('id, nombre').order('nombre', { ascending: true });
+    return ((data ?? []) as Array<{ id: string; nombre: string }>).map((s) => ({ id: s.id, nombre: s.nombre }));
+  }
+
+  private async registrarMovimientoSocio(
+    fn: 'registrar_aporte' | 'registrar_retiro',
+    params: MovimientoSocioParams
+  ): Promise<MovimientoSocioResult> {
+    if (!params.socioId) {
+      return { success: false, error: 'Elegí el socio' };
+    }
+    if (!params.cuentaId) {
+      return { success: false, error: 'Elegí la cuenta' };
+    }
+    if (!(params.monto > 0)) {
+      return { success: false, error: 'El monto tiene que ser mayor que 0' };
+    }
+    let error: { message: string } | null;
+    try {
+      ({ error } = await this.db.rpc(fn, {
+        p_socio_id: params.socioId,
+        p_cuenta_id: params.cuentaId,
+        p_monto: params.monto,
+        p_descripcion: params.descripcion ?? null,
+      }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se registró el movimiento: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message}. No se registró nada.` };
+    }
+    return { success: true };
   }
 
   async anularVenta(params: AnularVentaParams): Promise<AnularVentaResult> {

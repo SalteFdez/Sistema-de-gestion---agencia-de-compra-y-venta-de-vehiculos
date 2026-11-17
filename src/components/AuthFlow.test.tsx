@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { AuthFlow } from './AuthFlow';
 import type { DeviceAuthService } from '../lib/auth/device-auth';
@@ -300,6 +300,167 @@ describe('AuthFlow UI Integration', () => {
     fireEvent.click(screen.getByRole('button', { name: /volver/i }));
 
     expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+  });
+
+  it('desde la pantalla principal, "Mover plata" abre el menú con las tres opciones y Volver regresa', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    };
+    mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /mover plata/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Mover plata' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /pasar entre cuentas/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /aporte de socio/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retiro de socio/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+  });
+
+  describe('Mover plata conectado al servicio', () => {
+    const unlockedAuth = () => ({
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({ id: 'u1', email: 'agustin@machoman.local', nombre: 'Agustín Fernandez' }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    });
+    const cuentasDeMock = () => ({
+      obtenerCuentasConSaldo: vi.fn().mockResolvedValue([
+        { id: 'c1', nombre: 'Caja efectivo', tipo: 'efectivo', saldo: 3000000 },
+        { id: 'c2', nombre: 'Banco', tipo: 'banco', saldo: 1500000 },
+      ]),
+      obtenerDineroDisponible: vi.fn().mockResolvedValue(4500000),
+      crearCuenta: vi.fn(),
+    });
+
+    it('Pasar entre cuentas: elige desde y hacia, confirma y registra con el servicio', async () => {
+      mockAuthService = unlockedAuth();
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockResolvedValue([]),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        listarMovimientos: vi.fn().mockResolvedValue([]),
+        transferir: vi.fn().mockResolvedValue({ success: true }),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          cuentasService={cuentasDeMock() as unknown as any}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /mover plata/i }));
+      fireEvent.click(screen.getByRole('button', { name: /pasar entre cuentas/i }));
+      const desde = await screen.findByRole('group', { name: 'Desde' });
+      fireEvent.click(within(desde).getByRole('button', { name: /caja efectivo/i }));
+      fireEvent.click(within(screen.getByRole('group', { name: 'Hacia' })).getByRole('button', { name: /banco/i }));
+      fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '1000000' } });
+      fireEvent.click(screen.getByRole('button', { name: /pasar plata/i }));
+
+      expect(await screen.findByRole('status')).toHaveTextContent('Pasaste $ 1.000.000 de Caja efectivo a Banco');
+      expect(vehiculosService.transferir).toHaveBeenCalledWith(
+        expect.objectContaining({ origenId: 'c1', destinoId: 'c2', monto: 1000000 })
+      );
+    });
+
+    it('Aporte de socio: el socio que carga viene preseleccionado y se registra con el servicio', async () => {
+      mockAuthService = unlockedAuth();
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockResolvedValue([]),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        listarMovimientos: vi.fn().mockResolvedValue([]),
+        listarSocios: vi.fn().mockResolvedValue([
+          { id: 'u1', nombre: 'Agustín Fernandez' },
+          { id: 'u2', nombre: 'Lautaro' },
+        ]),
+        registrarAporte: vi.fn().mockResolvedValue({ success: true }),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          cuentasService={cuentasDeMock() as unknown as any}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /mover plata/i }));
+      fireEvent.click(screen.getByRole('button', { name: /aporte de socio/i }));
+      const socios = await screen.findByRole('group', { name: 'Socio' });
+      expect(within(socios).getByRole('button', { name: 'Agustín Fernandez' })).toHaveAttribute('aria-pressed', 'true');
+      fireEvent.click(within(socios).getByRole('button', { name: 'Lautaro' }));
+      fireEvent.click(within(screen.getByRole('group', { name: 'Cuenta' })).getByRole('button', { name: /caja efectivo/i }));
+      fireEvent.change(screen.getByLabelText(/monto/i), { target: { value: '500000' } });
+      fireEvent.click(screen.getByRole('button', { name: /registrar aporte/i }));
+
+      expect(await screen.findByRole('status')).toHaveTextContent('Lautaro aportó $ 500.000 en Caja efectivo');
+      expect(vehiculosService.registrarAporte).toHaveBeenCalledWith(
+        expect.objectContaining({ socioId: 'u2', cuentaId: 'c1', monto: 500000 })
+      );
+    });
+
+    it('anular una pata de pase en el historial llama a anularTransferencia, no a anularMovimiento', async () => {
+      mockAuthService = unlockedAuth();
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      const salida = {
+        id: 'p1', fecha: '2026-11-16', tipo: 'transferencia_salida', monto: -1000000, descripcion: 'Depósito del efectivo',
+        cuentaNombre: 'Caja efectivo', vehiculoId: null, vehiculoCodigo: null, categoriaNombre: null, creadoPor: 'Agustín Fernandez',
+        anulado: false, anuladoPor: null, anuladoEl: null, motivoAnulacion: null, gastoId: null, ventaId: null,
+        transferenciaId: 't1', cuentaContraparte: 'Banco', socioNombre: null,
+      };
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockResolvedValue([]),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        listarMovimientos: vi.fn().mockResolvedValue([salida]),
+        anularTransferencia: vi.fn().mockResolvedValue({ success: true }),
+        anularMovimiento: vi.fn().mockResolvedValue({ success: true }),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          cuentasService={cuentasDeMock() as unknown as any}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Movimientos' }));
+      fireEvent.click(await screen.findByText('Pase a Banco'));
+      fireEvent.click(screen.getByRole('button', { name: /^anular$/i }));
+      const dialogo = screen.getByRole('dialog');
+      fireEvent.change(within(dialogo).getByLabelText(/motivo/i), { target: { value: 'cargué mal el monto' } });
+      fireEvent.click(within(dialogo).getByRole('button', { name: /anular movimiento/i }));
+
+      await waitFor(() =>
+        expect(vehiculosService.anularTransferencia).toHaveBeenCalledWith({ movimientoId: 'p1', motivo: 'cargué mal el monto' })
+      );
+      expect(vehiculosService.anularMovimiento).not.toHaveBeenCalled();
+    });
   });
 
   it('en Balances muestra el Inventario que trae el servicio, sin cambiar el dinero disponible', async () => {

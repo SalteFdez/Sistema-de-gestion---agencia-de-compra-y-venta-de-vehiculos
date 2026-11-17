@@ -11,6 +11,290 @@ describe('VehiculosService', () => {
     };
   });
 
+  describe('transferir', () => {
+    it('no pasa plata si la cuenta de origen y la de destino son la misma', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.transferir({
+        origenId: 'c1',
+        destinoId: 'c1',
+        monto: 1000000,
+        descripcion: 'Depósito del efectivo',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/cuentas distintas/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no pasa plata si el monto es 0', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.transferir({
+        origenId: 'c1',
+        destinoId: 'c2',
+        monto: 0,
+        descripcion: 'Depósito del efectivo',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('un pase válido llama a la RPC transferir con origen, destino, monto y descripción, y devuelve éxito', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { transferencia_id: 't1' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.transferir({
+        origenId: 'c1',
+        destinoId: 'c2',
+        monto: 1000000,
+        descripcion: 'Depósito del efectivo',
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('transferir', {
+        p_origen_id: 'c1',
+        p_destino_id: 'c2',
+        p_monto: 1000000,
+        p_descripcion: 'Depósito del efectivo',
+      });
+    });
+
+    it('si se corta la conexión, dice que no se pudo confirmar y no afirma que no se pasó nada', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      const service = new VehiculosService(mockDb);
+      const res = await service.transferir({
+        origenId: 'c1',
+        destinoId: 'c2',
+        monto: 1000000,
+        descripcion: 'Depósito del efectivo',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sin conexión/i);
+      expect(res.error).toMatch(/no se pudo confirmar/i);
+      expect(res.error).not.toMatch(/no se pasó nada/i);
+    });
+  });
+
+  describe('registrarAporte', () => {
+    it('no registra si no se eligió el socio', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarAporte({
+        socioId: '',
+        cuentaId: 'c1',
+        monto: 500000,
+        descripcion: 'Aporte para el capital',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/socio/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si no se eligió la cuenta', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarAporte({
+        socioId: 'u2',
+        cuentaId: '',
+        monto: 500000,
+        descripcion: 'Aporte para el capital',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/cuenta/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no registra si el monto es 0', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarAporte({
+        socioId: 'u2',
+        cuentaId: 'c1',
+        monto: 0,
+        descripcion: 'Aporte para el capital',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('un aporte válido llama a la RPC registrar_aporte y devuelve éxito', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { movimiento_id: 'm1' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarAporte({
+        socioId: 'u2',
+        cuentaId: 'c1',
+        monto: 500000,
+        descripcion: 'Aporte para el capital',
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_aporte', {
+        p_socio_id: 'u2',
+        p_cuenta_id: 'c1',
+        p_monto: 500000,
+        p_descripcion: 'Aporte para el capital',
+      });
+    });
+
+    it('si se corta la conexión, dice que no se pudo confirmar y no afirma que no se registró nada', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarAporte({
+        socioId: 'u2',
+        cuentaId: 'c1',
+        monto: 500000,
+        descripcion: 'Aporte para el capital',
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sin conexión/i);
+      expect(res.error).toMatch(/no se pudo confirmar/i);
+      expect(res.error).not.toMatch(/no se registró nada/i);
+    });
+  });
+
+  describe('registrarRetiro', () => {
+    it('un retiro válido llama a la RPC registrar_retiro y devuelve éxito', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { movimiento_id: 'm2' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarRetiro({
+        socioId: 'u3',
+        cuentaId: 'c1',
+        monto: 300000,
+        descripcion: 'Retiro personal',
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_retiro', {
+        p_socio_id: 'u3',
+        p_cuenta_id: 'c1',
+        p_monto: 300000,
+        p_descripcion: 'Retiro personal',
+      });
+    });
+  });
+
+  describe('anularTransferencia', () => {
+    it('anular un pase desde la pata de salida llama a la RPC con esa pata y el motivo', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { transferencia_id: 't1' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.anularTransferencia({
+        movimientoId: 'pata-salida',
+        motivo: 'cargué mal el monto',
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('anular_transferencia', {
+        p_movimiento_id: 'pata-salida',
+        p_motivo: 'cargué mal el monto',
+      });
+    });
+
+    it('no anula un pase si el motivo está vacío', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.anularTransferencia({ movimientoId: 'pata-salida', motivo: '   ' });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/motivo.*obligatorio/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('anularMovimiento: aporte y retiro de socio', () => {
+    it('anular un aporte o un retiro llama a anular_movimiento con su id y el motivo', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: null, error: null });
+      const service = new VehiculosService(mockDb);
+
+      for (const tipo of ['aporte_socio', 'retiro_socio'] as const) {
+        const res = await service.anularMovimiento({
+          movimientoId: `m-${tipo}`,
+          gastoId: null,
+          motivo: 'cargué mal el monto',
+          tipo,
+          anulado: false,
+        });
+        expect(res.success).toBe(true);
+      }
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('anular_movimiento', {
+        p_movimiento_id: 'm-aporte_socio',
+        p_motivo: 'cargué mal el monto',
+      });
+      expect(mockDb.rpc).toHaveBeenCalledWith('anular_movimiento', {
+        p_movimiento_id: 'm-retiro_socio',
+        p_motivo: 'cargué mal el monto',
+      });
+    });
+  });
+
+  describe('listarMovimientos: pases y socios', () => {
+    it('un pase trae la cuenta de la otra pata y un aporte trae el nombre del socio', async () => {
+      const pagina = [
+        {
+          id: 'p1', fecha: '2026-11-16', tipo: 'transferencia_salida', monto: -1000000, descripcion: 'Depósito del efectivo',
+          anulado: false, anulado_at: null, motivo_anulacion: null, gasto_id: null, venta_id: null, vehiculo_id: null,
+          transferencia_id: 't1', socio_id: null, cuenta: { nombre: 'Caja efectivo' }, vehiculo: null, categoria: null,
+          creador: { nombre: 'Agustín Fernandez' }, anulador: null, socio: null,
+        },
+        {
+          id: 'a1', fecha: '2026-11-16', tipo: 'aporte_socio', monto: 500000, descripcion: null,
+          anulado: false, anulado_at: null, motivo_anulacion: null, gasto_id: null, venta_id: null, vehiculo_id: null,
+          transferencia_id: null, socio_id: 'u2', cuenta: { nombre: 'Caja efectivo' }, vehiculo: null, categoria: null,
+          creador: { nombre: 'Agustín Fernandez' }, anulador: null, socio: { nombre: 'Lautaro' },
+        },
+      ];
+      const contrapartes = [
+        { id: 'p2', transferencia_id: 't1', monto: 1000000, cuenta: { nombre: 'Banco' } },
+      ];
+      // Consulta encadenable: la página termina en range; la búsqueda de contrapartes en in
+      const chain = () => {
+        const b: Record<string, unknown> = {
+          order: vi.fn(() => b),
+          range: vi.fn(() => Promise.resolve({ data: pagina, error: null })),
+          in: vi.fn(() => Promise.resolve({ data: contrapartes, error: null })),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => chain()) });
+
+      const service = new VehiculosService(mockDb);
+      const items = await service.listarMovimientos(0);
+
+      expect(items[0].cuentaContraparte).toBe('Banco');
+      expect(items[1].socioNombre).toBe('Lautaro');
+    });
+  });
+
+  describe('listarSocios', () => {
+    it('devuelve los socios con su id y su nombre', async () => {
+      const consulta = {
+        order: vi.fn(() => consulta),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({
+            data: [
+              { id: 'u1', nombre: 'Agustín Fernandez' },
+              { id: 'u2', nombre: 'Lautaro' },
+              { id: 'u3', nombre: 'Antonio' },
+            ],
+            error: null,
+          }).then(ok, ko),
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue(consulta) });
+
+      const service = new VehiculosService(mockDb);
+      const socios = await service.listarSocios();
+
+      expect(mockDb.from).toHaveBeenCalledWith('usuarios');
+      expect(socios).toEqual([
+        { id: 'u1', nombre: 'Agustín Fernandez' },
+        { id: 'u2', nombre: 'Lautaro' },
+        { id: 'u3', nombre: 'Antonio' },
+      ]);
+    });
+  });
+
   describe('cargarStock', () => {
     it('no guarda si falta la marca', async () => {
       const service = new VehiculosService(mockDb);

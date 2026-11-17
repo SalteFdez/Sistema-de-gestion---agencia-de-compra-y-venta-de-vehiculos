@@ -115,6 +115,108 @@ describe('MovimientosView', () => {
     expect(within(screen.getByRole('dialog')).getByLabelText(/motivo/i)).toHaveValue('cargué mal el monto');
   });
 
+  it('un aporte y un retiro se muestran como "Aporte de Lautaro" y "Retiro de Lautaro"', () => {
+    const aporte: MovimientoItem = {
+      ...base, id: 'a1', tipo: 'aporte_socio', monto: 500000, descripcion: null, socioNombre: 'Lautaro',
+    };
+    const retiro: MovimientoItem = {
+      ...base, id: 'r1', tipo: 'retiro_socio', monto: -300000, descripcion: null, socioNombre: 'Lautaro',
+    };
+
+    render(<MovimientosView movimientos={[aporte, retiro]} onVolver={vi.fn()} />);
+
+    expect(screen.getByText('Aporte de Lautaro')).toBeInTheDocument();
+    expect(screen.getByText('Retiro de Lautaro')).toBeInTheDocument();
+  });
+
+  it('las dos patas de un pase se muestran como "Pase a Banco" y "Pase desde Caja efectivo"', () => {
+    const salida: MovimientoItem = {
+      ...base, id: 'p1', tipo: 'transferencia_salida', monto: -1000000, descripcion: 'Depósito del efectivo',
+      cuentaNombre: 'Caja efectivo', cuentaContraparte: 'Banco', transferenciaId: 't1',
+    };
+    const entrada: MovimientoItem = {
+      ...base, id: 'p2', tipo: 'transferencia_entrada', monto: 1000000, descripcion: 'Depósito del efectivo',
+      cuentaNombre: 'Banco', cuentaContraparte: 'Caja efectivo', transferenciaId: 't1',
+    };
+
+    render(<MovimientosView movimientos={[salida, entrada]} onVolver={vi.fn()} />);
+
+    expect(screen.getByText('Pase a Banco')).toBeInTheDocument();
+    expect(screen.getByText('Pase desde Caja efectivo')).toBeInTheDocument();
+  });
+
+  it('aporte y entrada de pase suman en verde; retiro y salida de pase restan en rojo', () => {
+    const aporte: MovimientoItem = {
+      ...base, id: 'a1', tipo: 'aporte_socio', monto: 500000, descripcion: null, socioNombre: 'Lautaro',
+    };
+    const retiro: MovimientoItem = {
+      ...base, id: 'r1', tipo: 'retiro_socio', monto: -300000, descripcion: null, socioNombre: 'Lautaro',
+    };
+    const salida: MovimientoItem = {
+      ...base, id: 'p1', tipo: 'transferencia_salida', monto: -900000, descripcion: 'Depósito del efectivo',
+      cuentaContraparte: 'Banco', transferenciaId: 't1',
+    };
+    const entrada: MovimientoItem = {
+      ...base, id: 'p2', tipo: 'transferencia_entrada', monto: 1200000, descripcion: 'Depósito del efectivo',
+      cuentaContraparte: 'Caja efectivo', transferenciaId: 't1',
+    };
+
+    render(<MovimientosView movimientos={[aporte, retiro, salida, entrada]} onVolver={vi.fn()} />);
+
+    const filaAporte = screen.getByText('Aporte de Lautaro').closest('li') as HTMLElement;
+    expect(within(filaAporte).getByText('+ $ 500.000')).toHaveClass('text-green-700');
+
+    const filaRetiro = screen.getByText('Retiro de Lautaro').closest('li') as HTMLElement;
+    expect(within(filaRetiro).getByText('- $ 300.000')).toHaveClass('text-red-600');
+
+    const filaSalida = screen.getByText('Pase a Banco').closest('li') as HTMLElement;
+    expect(within(filaSalida).getByText('- $ 900.000')).toHaveClass('text-red-600');
+
+    const filaEntrada = screen.getByText('Pase desde Caja efectivo').closest('li') as HTMLElement;
+    expect(within(filaEntrada).getByText('+ $ 1.200.000')).toHaveClass('text-green-700');
+  });
+
+  it('cada tipo nuevo tiene su etiqueta en palabras: "Aporte de socio", "Retiro de socio" y "Pase"', () => {
+    const aporte: MovimientoItem = {
+      ...base, id: 'a1', tipo: 'aporte_socio', monto: 500000, descripcion: null, socioNombre: 'Lautaro',
+    };
+    const retiro: MovimientoItem = {
+      ...base, id: 'r1', tipo: 'retiro_socio', monto: -300000, descripcion: null, socioNombre: 'Lautaro',
+    };
+    const salida: MovimientoItem = {
+      ...base, id: 'p1', tipo: 'transferencia_salida', monto: -900000, descripcion: 'Depósito del efectivo',
+      cuentaContraparte: 'Banco', transferenciaId: 't1',
+    };
+
+    render(<MovimientosView movimientos={[aporte, retiro, salida]} onVolver={vi.fn()} />);
+
+    const filaAporte = screen.getByText('Aporte de Lautaro').closest('li') as HTMLElement;
+    expect(within(filaAporte).getByText('Aporte de socio')).toBeInTheDocument();
+
+    const filaRetiro = screen.getByText('Retiro de Lautaro').closest('li') as HTMLElement;
+    expect(within(filaRetiro).getByText('Retiro de socio')).toBeInTheDocument();
+
+    const filaSalida = screen.getByText('Pase a Banco').closest('li') as HTMLElement;
+    expect(within(filaSalida).getByText('Pase')).toBeInTheDocument();
+  });
+
+  it('anular una pata de pase avisa que se anula el pase completo y dice de dónde vuelve la plata', () => {
+    const onAnular = vi.fn();
+    const salida: MovimientoItem = {
+      ...base, id: 'p1', tipo: 'transferencia_salida', monto: -1000000, descripcion: 'Depósito del efectivo',
+      cuentaNombre: 'Caja efectivo', cuentaContraparte: 'Banco', transferenciaId: 't1',
+    };
+
+    render(<MovimientosView movimientos={[salida]} onAnular={onAnular} onVolver={vi.fn()} />);
+
+    fireEvent.click(screen.getByText('Pase a Banco'));
+    fireEvent.click(screen.getByRole('button', { name: /^anular$/i }));
+
+    const dialogo = screen.getByRole('dialog');
+    expect(dialogo).toHaveTextContent('Vas a anular el pase completo');
+    expect(dialogo).toHaveTextContent('vuelven $ 1.000.000 de Banco a Caja efectivo');
+  });
+
   it('"Ver más" aparece cuando puede haber más movimientos y los trae', () => {
     const onVerMas = vi.fn();
 
