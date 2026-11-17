@@ -160,6 +160,20 @@ export interface TransferirResult {
   error?: string;
 }
 
+export interface GastoRepartidoParams {
+  monto: number;
+  categoriaId: string;
+  cuentaId: string;
+  descripcion?: string;
+  /** Puede venir vacío: el gasto queda sin asignar */
+  asignaciones: Array<{ vehiculoId: string; monto: number }>;
+}
+
+export interface GastoRepartidoResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface MovimientoSocioParams {
   socioId: string;
   cuentaId: string;
@@ -197,8 +211,13 @@ export interface AnularVehiculoResult {
 
 export interface VistaPreviaAnulacion {
   pagosCompra: PagoDetalle[];
-  gastosCantidad: number;
-  gastosTotal: number;
+  /** Legado: cantidad y suma de asignaciones vigentes. El aviso usa gastosQueSeAnulan y partesSinAsignar. */
+  gastosCantidad?: number;
+  gastosTotal?: number;
+  /** Gastos que se anulan enteros (solo de este auto) */
+  gastosQueSeAnulan?: { cantidad: number; total: number };
+  /** Partes de gastos compartidos que quedan sin asignar */
+  partesSinAsignar?: { cantidad: number; total: number };
 }
 
 export interface AnularMovimientoParams {
@@ -528,6 +547,57 @@ export class VehiculosService {
     return { success: true };
   }
 
+  /** Autos y montos que bajan si se anula un gasto (solo asignaciones vigentes). */
+  async vistaPreviaAnularGasto(gastoId: string): Promise<Array<{ codigo: string; monto: number }>> {
+    const { data } = await this.db
+      .from('asignaciones_gasto')
+      .select('monto, anulada, vehiculo:vehiculos(codigo)')
+      .eq('gasto_id', gastoId)
+      .eq('anulada', false);
+    const filas = (Array.isArray(data) ? data : []) as Array<{ monto: number | string; vehiculo: { codigo: string } | null }>;
+    return filas.map((f) => ({ codigo: f.vehiculo?.codigo ?? '', monto: Math.abs(Number(f.monto)) || 0 }));
+  }
+
+  async registrarGastoRepartido(params: GastoRepartidoParams): Promise<GastoRepartidoResult> {
+    if (!(params.monto > 0)) {
+      return { success: false, error: 'El monto tiene que ser mayor que 0' };
+    }
+    if (!params.categoriaId) {
+      return { success: false, error: 'Elegí una categoría' };
+    }
+    if (!params.cuentaId) {
+      return { success: false, error: 'Elegí una cuenta' };
+    }
+    if (params.asignaciones.some((a) => !(a.monto > 0))) {
+      return { success: false, error: 'Cada asignación tiene que ser mayor que 0' };
+    }
+    const ids = params.asignaciones.map((a) => a.vehiculoId);
+    if (new Set(ids).size !== ids.length) {
+      return { success: false, error: 'Repetiste un vehículo: cada vehículo va una sola vez' };
+    }
+    const asignado = params.asignaciones.reduce((acc, a) => acc + a.monto, 0);
+    if (asignado > params.monto) {
+      return { success: false, error: `Sobran ${formatMoney(asignado - params.monto)} asignados de más` };
+    }
+
+    let error: { message: string } | null;
+    try {
+      ({ error } = await this.db.rpc('registrar_gasto_repartido', {
+        p_monto: params.monto,
+        p_categoria_id: params.categoriaId,
+        p_cuenta_id: params.cuentaId,
+        p_descripcion: params.descripcion?.trim() || null,
+        p_asignaciones: params.asignaciones.map((a) => ({ vehiculo_id: a.vehiculoId, monto: a.monto })),
+      }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se guardó el gasto: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message}. No se guardó nada.` };
+    }
+    return { success: true };
+  }
+
   async listarSocios(): Promise<Array<{ id: string; nombre: string }>> {
     const { data } = await this.db.from('usuarios').select('id, nombre').order('nombre', { ascending: true });
     return ((data ?? []) as Array<{ id: string; nombre: string }>).map((s) => ({ id: s.id, nombre: s.nombre }));
@@ -620,13 +690,43 @@ export class VehiculosService {
 
     const { data: asignaciones } = await this.db
       .from('asignaciones_gasto')
-      .select('monto, gasto:gastos(anulado)')
-      .eq('vehiculo_id', vehiculoId);
+      .select('gasto_id, monto, gasto:gastos(monto_total, anulado)')
+      .eq('vehiculo_id', vehiculoId)
+      .eq('anulada', false);
     const filasGasto = (Array.isArray(asignaciones) ? asignaciones : []) as Array<{
+      gasto_id: string;
       monto: number | string;
-      gasto: { anulado: boolean } | null;
+      gasto: { monto_total: number | string; anulado: boolean } | null;
     }>;
     const vigentes = filasGasto.filter((a) => a.gasto !== null && a.gasto.anulado === false);
+
+    // Un gasto se anula entero si todas sus asignaciones vigentes son de este auto y cubren el total;
+    // si es compartido, solo queda sin asignar la parte de este auto (la RPC anular_vehiculo hace lo mismo)
+    const idsGastos = [...new Set(vigentes.map((a) => a.gasto_id))];
+    const todas: Array<{ gasto_id: string; vehiculo_id: string; monto: number | string; anulada: boolean }> = [];
+    if (idsGastos.length > 0) {
+      const { data: otras } = await this.db
+        .from('asignaciones_gasto')
+        .select('gasto_id, vehiculo_id, monto, anulada')
+        .in('gasto_id', idsGastos);
+      todas.push(...((Array.isArray(otras) ? otras : []) as typeof todas));
+    }
+    const gastosQueSeAnulan = { cantidad: 0, total: 0 };
+    const partesSinAsignar = { cantidad: 0, total: 0 };
+    for (const a of vigentes) {
+      const delGasto = todas.filter((x) => x.gasto_id === a.gasto_id && !x.anulada);
+      const soloDelAuto = delGasto.every((x) => x.vehiculo_id === vehiculoId);
+      const cubreTotal =
+        delGasto.reduce((acc, x) => acc + (Math.abs(Number(x.monto)) || 0), 0) ===
+        (Math.abs(Number(a.gasto?.monto_total)) || 0);
+      if (soloDelAuto && cubreTotal) {
+        gastosQueSeAnulan.cantidad += 1;
+        gastosQueSeAnulan.total += Math.abs(Number(a.gasto?.monto_total)) || 0;
+      } else {
+        partesSinAsignar.cantidad += 1;
+        partesSinAsignar.total += Math.abs(Number(a.monto)) || 0;
+      }
+    }
 
     return {
       pagosCompra: filasPago.map((p) => ({
@@ -635,6 +735,8 @@ export class VehiculosService {
       })),
       gastosCantidad: vigentes.length,
       gastosTotal: vigentes.reduce((acc, a) => acc + (Math.abs(Number(a.monto)) || 0), 0),
+      gastosQueSeAnulan,
+      partesSinAsignar,
     };
   }
 
@@ -852,7 +954,8 @@ export class VehiculosService {
     const { data: filasGasto, error: errorGastos } = await this.db
       .from('asignaciones_gasto')
       .select('monto, gasto:gastos(fecha, descripcion, anulado, categoria:categorias(nombre))')
-      .eq('vehiculo_id', id);
+      .eq('vehiculo_id', id)
+      .eq('anulada', false);
     if (errorGastos) {
       return { success: false, error: errorGastos.message };
     }

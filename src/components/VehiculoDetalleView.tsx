@@ -70,9 +70,19 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
     if (vistaPrevia && vistaPrevia.pagosCompra.length > 0) {
       lineas[0] += `; vuelven ${vistaPrevia.pagosCompra.map((p) => `${formatMoney(p.monto)} a ${p.cuentaNombre}`).join(' y ')}`;
     }
-    if (vistaPrevia && vistaPrevia.gastosCantidad > 0) {
-      const n = vistaPrevia.gastosCantidad;
-      lineas.push(`Se van a anular también ${n} ${n === 1 ? 'gasto' : 'gastos'} por ${formatMoney(vistaPrevia.gastosTotal)}`);
+    // Gastos solo de este auto: se anulan enteros (la plata vuelve)
+    const seAnulan = vistaPrevia?.gastosQueSeAnulan;
+    if (seAnulan && seAnulan.cantidad > 0) {
+      const n = seAnulan.cantidad;
+      lineas.push(`Se van a anular también ${n} ${n === 1 ? 'gasto' : 'gastos'} por ${formatMoney(seAnulan.total)}`);
+    }
+    // Partes de gastos compartidos: quedan sin asignar, el gasto sigue para los otros autos
+    const sinAsignar = vistaPrevia?.partesSinAsignar;
+    if (sinAsignar && sinAsignar.cantidad > 0) {
+      const n = sinAsignar.cantidad;
+      lineas.push(
+        `${formatMoney(sinAsignar.total)} de ${n} ${n === 1 ? 'gasto compartido' : 'gastos compartidos'} quedan sin asignar`
+      );
     }
     return lineas;
   };

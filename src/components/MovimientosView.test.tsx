@@ -217,6 +217,32 @@ describe('MovimientosView', () => {
     expect(dialogo).toHaveTextContent('vuelven $ 1.000.000 de Banco a Caja efectivo');
   });
 
+  it('anular un gasto repartido avisa a qué autos les baja el costo y cuánto', async () => {
+    const vistaPreviaGasto = vi.fn().mockResolvedValue([
+      { codigo: 'MC-010', monto: 250000 },
+      { codigo: 'MC-012', monto: 50000 },
+    ]);
+    const gasto: MovimientoItem = {
+      ...base, id: 'g1', tipo: 'gasto', monto: -300000, descripcion: 'Pintura y chapa',
+      cuentaNombre: 'Caja efectivo', gastoId: 'g1', vehiculoCodigo: null, categoriaNombre: 'Chapa y pintura',
+    };
+
+    render(
+      <MovimientosView
+        movimientos={[gasto]}
+        onAnular={vi.fn()}
+        vistaPreviaGasto={vistaPreviaGasto}
+        onVolver={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Pintura y chapa'));
+    fireEvent.click(screen.getByRole('button', { name: /^anular$/i }));
+
+    expect(await screen.findByText(/Baja el costo de MC-010 en \$ 250\.000 y de MC-012 en \$ 50\.000/)).toBeInTheDocument();
+    expect(vistaPreviaGasto).toHaveBeenCalledWith('g1');
+  });
+
   it('"Ver más" aparece cuando puede haber más movimientos y los trae', () => {
     const onVerMas = vi.fn();
 

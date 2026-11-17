@@ -36,13 +36,14 @@ Sistema de gestión interna para una agencia de compra y venta de vehículos usa
 
 ## Etapa 2 — Negocios complejos
 
-1. **E2-01 · Seña** — Como socio, quiero registrar una seña sobre un vehículo, para que quede reservado y la seña se descuente al venderlo. Requiere: E1-06
 2. **E2-02 · Venta con permuta** — Como socio, quiero registrar una venta donde recibo un vehículo como parte de pago, para que entre al stock con su valor pactado y el sistema me avise si los números no cierran. Requiere: E1-06
 3. **E2-03 · Venta con financiación** — Como socio, quiero registrar una venta con parte del precio financiada en cuotas, para que el sistema separe lo que entra hoy de lo que queda por cobrar y cuándo. Requiere: E1-06 · *Ver preg. abierta 4 (interés/recargo); hoy está fuera de alcance.*
 4. **E2-04 · Cuotas por cobrar** — Como socio, quiero ver las cuotas pendientes por fecha con las vencidas resaltadas y marcarlas como cobradas (total o parcial) eligiendo la cuenta, para saber qué voy a cobrar y que lo cobrado pase al disponible. Requiere: E2-03
 5. **E2-05 · Gasto repartido** — Como socio, quiero registrar un gasto repartido entre varios vehículos con montos distintos, o dejar parte o todo sin asignar, para casos como el chapista que cobra un solo precio o el mecánico que cobra por semana. Requiere: E1-07
 6. **E2-06 · Pendientes de asignar** — Como socio, quiero ver los gastos pendientes de asignar agrupados por proveedor y asignarlos total o parcialmente a uno o más vehículos, para que el costo real de cada auto quede correcto. Requiere: E2-05
 7. **E2-07 · Mover plata** — Como socio, quiero registrar pases de plata entre cuentas y aportes o retiros de cada socio, para que no se confundan con gastos ni ingresos del negocio. Requiere: E1-02
+
+*Descartada: E2-01 Seña (decisión 2026-11-17: no se registran señas; la venta se cierra el mismo día).*
 
 ## Etapa 3 — Reportes y pulido
 

@@ -7,7 +7,10 @@ import {
   type RegistrarGastoResult,
   type RegistrarIngresoParams,
   type RegistrarIngresoResult,
+  type GastoRepartidoParams,
+  type GastoRepartidoResult,
 } from '../lib/vehiculos/vehiculos-service';
+import { FilasVehiculoMonto, type FilaVehiculo } from './FilasVehiculoMonto';
 
 // Saldo negativo con el signo menos típico: "$ −150.000"
 const formatoNegativo = (n: number): string => `$ −${formatMoney(Math.abs(n)).replace('$ ', '')}`;
@@ -30,6 +33,8 @@ export interface RegistrarGastoViewProps {
   onIrACuentas?: () => void;
   onRegistrar?: (params: RegistrarGastoParams) => Promise<RegistrarGastoResult>;
   onRegistrarIngreso?: (params: RegistrarIngresoParams) => Promise<RegistrarIngresoResult>;
+  /** Gasto repartido entre varios vehículos (puede quedar parte o todo sin asignar) */
+  onRegistrarRepartido?: (params: GastoRepartidoParams) => Promise<GastoRepartidoResult>;
 }
 
 export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
@@ -42,15 +47,17 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   onIrACuentas,
   onRegistrar,
   onRegistrarIngreso,
+  onRegistrarRepartido,
 }) => {
   const titulo = modo === 'ingreso' ? 'Registrar ingreso' : 'Registrar gasto';
   const [monto, setMonto] = useState<string>('');
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [cuentaId, setCuentaId] = useState<string | null>(null);
-  const [alcance, setAlcance] = useState<'general' | 'vehiculo' | null>(
+  const [alcance, setAlcance] = useState<'general' | 'vehiculo' | 'varios' | null>(
     vehiculoPreseleccionado ? 'vehiculo' : null
   );
   const [vehiculoId, setVehiculoId] = useState<string | null>(vehiculoPreseleccionado ?? null);
+  const [filasVarios, setFilasVarios] = useState<FilaVehiculo[]>([]);
   const [descripcion, setDescripcion] = useState<string>('');
   const [avisoNegativo, setAvisoNegativo] = useState<Array<{ nombre: string; saldoResultante: number }> | null>(null);
   const [resumen, setResumen] = useState<string | null>(null);
@@ -76,7 +83,39 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
     }
   };
 
+  const enviarRepartido = async () => {
+    if (!puedeConfirmar || !onRegistrarRepartido || categoriaId === null || cuentaId === null) return;
+    const res = await onRegistrarRepartido({
+      monto: montoNumero,
+      categoriaId,
+      cuentaId,
+      descripcion: descripcion.trim() || undefined,
+      asignaciones: filasVarios.map((f) => ({ vehiculoId: f.vehiculoId, monto: f.monto })),
+    });
+    if (res.success) {
+      setErrorGuardado(null);
+      const catNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
+      const cuentaNombre = cuentas.find((c) => c.id === cuentaId)?.nombre ?? '';
+      const codigo = (id: string) => vehiculos.find((v) => v.id === id)?.codigo ?? '';
+      const detalle =
+        filasVarios.length > 0
+          ? filasVarios.map((f) => `${formatMoney(f.monto)} a ${codigo(f.vehiculoId)}`).join(', ')
+          : 'sin asignar';
+      const concepto = descripcion.trim() || catNombre;
+      const quedan = montoNumero - sumaFilas;
+      const sobrante = quedan > 0 ? ` · Quedan ${formatMoney(quedan)} sin asignar` : '';
+      setResumen(`Gasto de ${formatMoney(montoNumero)} · ${concepto} · ${detalle} · salió de ${cuentaNombre}${sobrante}`);
+    } else {
+      // Nada quedó guardado: los datos siguen en pantalla para reintentar
+      setErrorGuardado(res.error ?? 'No se pudo registrar el gasto. No se guardó nada.');
+    }
+  };
+
   const enviar = async () => {
+    if (alcance === 'varios') {
+      await enviarRepartido();
+      return;
+    }
     if (!puedeConfirmar || !onRegistrar || categoriaId === null || cuentaId === null) return;
     const res = await onRegistrar({
       monto: montoNumero,
@@ -118,11 +157,22 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
 
   const montoNumero = parseMoneyInput(monto);
   // Ingreso: solo monto, categoría y cuenta (siempre general). Gasto: también el alcance.
+  // Reparto: cada monto > 0, sin vehículos repetidos, y lo asignado no supera el total
+  const sumaFilas = filasVarios.reduce((acc, f) => acc + (f.monto || 0), 0);
+  const repartoValido =
+    filasVarios.every((f) => f.monto > 0) &&
+    new Set(filasVarios.map((f) => f.vehiculoId)).size === filasVarios.length &&
+    sumaFilas <= montoNumero;
+
   const puedeConfirmar =
     montoNumero > 0 &&
     categoriaId !== null &&
     cuentaId !== null &&
-    (modo === 'ingreso' || (alcance !== null && (alcance === 'general' || vehiculoId !== null)));
+    (modo === 'ingreso' ||
+      (alcance !== null &&
+        (alcance === 'general' ||
+          (alcance === 'vehiculo' && vehiculoId !== null) ||
+          (alcance === 'varios' && repartoValido))));
 
   // En stock primero, después los vendidos (marcados)
   const vehiculosOrdenados = [...vehiculos].sort((a, b) => {
@@ -269,7 +319,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
         <div>
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">¿A qué corresponde?</h2>
           <div className="grid grid-cols-2 gap-2">
-            {(['general', 'vehiculo'] as const).map((a) => {
+            {(['general', 'vehiculo', 'varios'] as const).map((a) => {
               const activa = alcance === a;
               return (
                 <button
@@ -281,7 +331,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
                     activa ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
                   }`}
                 >
-                  {a === 'general' ? 'General del negocio' : 'Un vehículo'}
+                  {a === 'general' ? 'General del negocio' : a === 'vehiculo' ? 'Un vehículo' : 'Varios vehículos'}
                 </button>
               );
             })}
@@ -330,6 +380,15 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
               </button>
             </div>
           </div>
+        )}
+
+        {alcance === 'varios' && (
+          <FilasVehiculoMonto
+            total={montoNumero}
+            vehiculos={vehiculos}
+            filas={filasVarios}
+            onChange={setFilasVarios}
+          />
         )}
 
         {alcance === 'vehiculo' && (

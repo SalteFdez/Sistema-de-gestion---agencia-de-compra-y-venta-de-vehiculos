@@ -43,9 +43,8 @@ Quedan explícitamente afuera para no demorar la primera versión:
 | **Cuenta** | Lugar donde está el dinero real: caja de efectivo, cuenta bancaria o billetera virtual. |
 | **Movimiento** | Entrada o salida de dinero real en una cuenta. Es la única fuente de verdad del dinero disponible. |
 | **Venta** | Operación de venta de un vehículo. Puede tener varios componentes de pago. |
-| **Componente de pago** | Cada parte con la que se paga una venta: dinero ahora (en una o más cuentas), seña previa, vehículo en permuta, financiación. |
+| **Componente de pago** | Cada parte con la que se paga una venta: dinero ahora (en una o más cuentas), vehículo en permuta, financiación. |
 | **Permuta** | Vehículo recibido como parte de pago. Entra al stock con el valor pactado. |
-| **Seña** | Dinero recibido para reservar un vehículo antes de la venta. Se descuenta del precio al vender. |
 | **Financiación / Cuota** | Parte del precio que se cobra a futuro, dividida en cuotas con fecha de vencimiento. Es dinero *por cobrar*, no disponible. |
 | **Gasto** | Salida de dinero por un costo (chapista, mecánico, trámite, alquiler…). |
 | **Asignación** | Parte de un gasto imputada a un vehículo concreto. |
@@ -103,7 +102,7 @@ El punto central del sistema es no mezclar tres conceptos que en la agenda queda
 
 ### 5.1 Regla de oro
 
-> **El dinero disponible nunca se guarda: se calcula siempre sumando los movimientos.** El saldo de cada cuenta es la suma de sus movimientos no anulados. Todo lo que mueve plata real (compra, venta, seña, cobro de cuota, gasto, ingreso, transferencia, aporte, retiro) genera uno o más movimientos.
+> **El dinero disponible nunca se guarda: se calcula siempre sumando los movimientos.** El saldo de cada cuenta es la suma de sus movimientos no anulados. Todo lo que mueve plata real (compra, venta, cobro de cuota, gasto, ingreso, transferencia, aporte, retiro) genera uno o más movimientos.
 
 Esto garantiza que el balance siempre coincide con lo cargado y que corregir un error es simplemente anular el movimiento equivocado.
 
@@ -193,7 +192,7 @@ Convenciones: claves `id uuid`, montos `bigint` en ARS, todas las tablas de oper
 
 **`movimientos`** — libro único del dinero real
 - `id`, `fecha`, `cuenta_id`, `monto` (con signo: positivo entra, negativo sale)
-- `tipo` (nombres oficiales, iguales a la base): `saldo_inicial` | `compra` | `venta_cobro` | `cuota_cobro` | `gasto` | `ingreso_otro` | `transferencia_salida` | `transferencia_entrada` | `aporte_socio` | `retiro_socio`. El tipo `sena` se agrega con una migración cuando se implemente la seña (Etapa 2).
+- `tipo` (nombres oficiales, iguales a la base): `saldo_inicial` | `compra` | `venta_cobro` | `cuota_cobro` | `gasto` | `ingreso_otro` | `transferencia_salida` | `transferencia_entrada` | `aporte_socio` | `retiro_socio`. **No se registran señas** (decisión 2026-11-17): cuando un cliente deja seña, la venta se cierra en el mismo día y se carga como venta.
 - Referencias opcionales: `vehiculo_id`, `venta_id`, `cuota_id`, `gasto_id`, `categoria_id`, `socio_id` (para aportes/retiros), `transferencia_id` (agrupa las dos patas de una transferencia)
 - `descripcion`
 - `anulado` (bool), `anulado_por`, `anulado_at`, `motivo_anulacion`
@@ -201,7 +200,7 @@ Convenciones: claves `id uuid`, montos `bigint` en ARS, todas las tablas de oper
 
 **`ventas`**
 - `id`, `vehiculo_id`, `comprador_id`, `fecha`, `precio_total`, `notas`, `anulada`, `created_by`, `created_at`
-- Regla (validada por la función `registrar_venta`): `precio_total` = Σ movimientos de la venta (incluida la seña previa) + Σ valores de permuta + monto financiado.
+- Regla (validada por la función `registrar_venta`): `precio_total` = Σ movimientos de la venta + Σ valores de permuta + monto financiado.
 
 **`venta_permutas`** — vehículos recibidos como parte de pago
 - `venta_id`, `vehiculo_recibido_id`, `valor_pactado`
@@ -242,8 +241,7 @@ Convenciones: claves `id uuid`, montos `bigint` en ARS, todas las tablas de oper
 | Función | Qué hace en una sola transacción |
 |---|---|
 | `registrar_compra` | Crea el vehículo (código nuevo) + movimiento de salida desde la cuenta elegida. |
-| `registrar_sena` | Movimiento `sena` ligado al vehículo + vehículo pasa a `reservado`. |
-| `registrar_venta` | Venta + movimientos de cobro (una o más cuentas) + liga la seña previa + permutas (alta de vehículos) + financiación y cuotas. Valida que los componentes sumen el precio. Vehículo pasa a `vendido`. |
+| `registrar_venta` | Venta + movimientos de cobro (una o más cuentas) + permutas (alta de vehículos) + financiación y cuotas. Valida que los componentes sumen el precio. Vehículo pasa a `vendido`. |
 | `cobrar_cuota` | Movimiento `cuota_cobro` (total o parcial) en la cuenta elegida. |
 | `registrar_gasto` | Gasto + movimiento de salida + asignaciones (opcionales). |
 | `asignar_gasto` | Agrega asignaciones a un gasto existente, validando que no superen el total. |
@@ -273,7 +271,7 @@ Pocas opciones, **botones grandes**, texto claro:
 
 ### 9.3 Asistente de venta (paso a paso)
 
-1. ¿Qué vehículo? (lista con fotos; los reservados muestran la seña)
+1. ¿Qué vehículo? (lista con fotos)
 2. ¿Quién compra? (buscar contacto o crear con nombre + teléfono)
 3. ¿Precio total?
 4. ¿Recibís un vehículo en parte de pago? → No / Sí (marca, modelo, año, color, foto, valor)
@@ -281,7 +279,7 @@ Pocas opciones, **botones grandes**, texto claro:
 6. ¿Cuánto entra ahora y dónde? (precargado con lo que falta; se puede repartir entre cuentas)
 7. Resumen en lenguaje simple ("Entran $5.000.000 hoy, queda por cobrar $2.000.000 en 4 cuotas, entra la moto MC-031 al stock") → **Confirmar**
 
-El paso 6 se calcula solo: precio − seña − permuta − financiación. El asistente no deja confirmar si los números no cierran, y explica cuánto falta o sobra.
+El paso 6 se calcula solo: precio − permuta − financiación. El asistente no deja confirmar si los números no cierran, y explica cuánto falta o sobra.
 
 ### 9.4 Balances
 
@@ -331,7 +329,6 @@ Alcance y criterios de aceptación:
 ### Etapa 2 — Negocios complejos
 
 - Venta con **permuta** (alta automática del vehículo recibido) y **financiación** en cuotas.
-- **Seña** y estado *reservado*.
 - **Cuotas por cobrar**: cobro total o parcial, vencidas.
 - **Gastos repartidos** entre varios vehículos y **pendientes de asignar** por proveedor.
 - **Mover plata**: transferencias entre cuentas, aportes y retiros de socios.
@@ -366,7 +363,6 @@ La etiqueta **[E1]**, **[E2]** o **[E3]** indica en qué etapa se implementa.
 
 ### Ventas
 - **[E1]** Como socio, quiero registrar una venta simple (vehículo, comprador, precio, en qué cuentas entró la plata) en pocos pasos.
-- **[E2]** Como socio, quiero registrar una seña sobre un vehículo, para que quede reservado y la seña se descuente al venderlo.
 - **[E2]** Como socio, quiero registrar una venta con financiación en cuotas, para que el sistema sepa cuánto falta cobrar y cuándo.
 - **[E2]** Como socio, quiero registrar una venta donde recibo un vehículo como parte de pago, para que se agregue al stock con su valor.
 - **[E2]** Como socio, quiero que en una venta compleja el sistema separe solo el dinero real, lo que queda por cobrar y el vehículo recibido, y me avise si los números no cierran.
@@ -402,6 +398,8 @@ La etiqueta **[E1]**, **[E2]** o **[E3]** indica en qué etapa se implementa.
 3. **Financiación:** sin interés ni recargo. Las cuotas suman exactamente lo financiado; si se quiere cobrar más, se incluye en el precio de venta.
 4. **Compra con varias cuentas:** sí, resuelto en E1-04. La compra con permuta de un vehículo propio queda fuera.
 5. **Categorías:** se usa la semilla de E1-07 hasta que exista la pantalla para administrarlas.
+
+6. **Señas:** no se registran. Son poco frecuentes y, cuando un cliente deja seña, la venta se cierra el mismo día (se carga directamente como venta). El estado `reservado` queda en la base sin uso.
 
 **Siguen abiertas:**
 

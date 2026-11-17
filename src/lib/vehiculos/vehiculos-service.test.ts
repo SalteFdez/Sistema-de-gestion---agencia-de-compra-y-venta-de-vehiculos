@@ -267,6 +267,205 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('registrarGastoRepartido', () => {
+    const base = {
+      monto: 300000,
+      categoriaId: 'cat1',
+      cuentaId: 'c1',
+      descripcion: 'Chapa y pintura',
+    };
+
+    it('rechaza una asignación de monto 0', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGastoRepartido({
+        ...base,
+        asignaciones: [{ vehiculoId: 'v1', monto: 0 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('rechaza repetir un vehículo', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGastoRepartido({
+        ...base,
+        asignaciones: [
+          { vehiculoId: 'v1', monto: 100000 },
+          { vehiculoId: 'v1', monto: 50000 },
+        ],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/repetiste|repetido/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si lo asignado supera el total y dice cuánto sobra', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGastoRepartido({
+        ...base,
+        asignaciones: [
+          { vehiculoId: 'v1', monto: 250000 },
+          { vehiculoId: 'v2', monto: 100000 },
+        ],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sobran \$ 50\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('un reparto parcial llama a la RPC con las asignaciones y devuelve éxito', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { gasto_id: 'g1' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGastoRepartido({
+        ...base,
+        asignaciones: [
+          { vehiculoId: 'v1', monto: 250000 },
+          { vehiculoId: 'v2', monto: 20000 },
+        ],
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_gasto_repartido', {
+        p_monto: 300000,
+        p_categoria_id: 'cat1',
+        p_cuenta_id: 'c1',
+        p_descripcion: 'Chapa y pintura',
+        p_asignaciones: [
+          { vehiculo_id: 'v1', monto: 250000 },
+          { vehiculo_id: 'v2', monto: 20000 },
+        ],
+      });
+    });
+
+    it('un gasto sin ningún vehículo también se registra (lista vacía)', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { gasto_id: 'g2' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGastoRepartido({ ...base, asignaciones: [] });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith(
+        'registrar_gasto_repartido',
+        expect.objectContaining({ p_asignaciones: [] })
+      );
+    });
+
+    it('si se corta la conexión, no afirma que no se guardó nada', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarGastoRepartido({
+        ...base,
+        asignaciones: [{ vehiculoId: 'v1', monto: 100000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sin conexión/i);
+      expect(res.error).toMatch(/no se pudo confirmar/i);
+      expect(res.error).not.toMatch(/no se guardó nada/i);
+    });
+  });
+
+  describe('vistaPreviaAnulacionVehiculo: gastos compartidos', () => {
+    // Asignaciones vigentes en memoria: el fake respeta eq() e in(), como la base
+    const asignaciones = [
+      { vehiculo_id: 'v1', gasto_id: 'g1', monto: 250000, anulada: false, gasto: { monto_total: 250000, anulado: false } },
+      { vehiculo_id: 'v1', gasto_id: 'g2', monto: 50000, anulada: false, gasto: { monto_total: 300000, anulado: false } },
+      { vehiculo_id: 'v2', gasto_id: 'g2', monto: 250000, anulada: false, gasto: { monto_total: 300000, anulado: false } },
+      { vehiculo_id: 'v1', gasto_id: 'g3', monto: 90000, anulada: true, gasto: { monto_total: 90000, anulado: false } },
+    ];
+
+    const consultaSobre = (filas: Array<Record<string, unknown>>) => {
+      const b: Record<string, unknown> = {
+        eq: vi.fn((col: string, val: unknown) => consultaSobre(filas.filter((f) => f[col] === val))),
+        in: vi.fn((col: string, vals: unknown[]) => Promise.resolve({ data: filas.filter((f) => vals.includes(f[col])), error: null })),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: filas, error: null }).then(ok, ko),
+      };
+      return b;
+    };
+
+    it('un gasto solo del auto se anula entero; la parte de un gasto compartido queda sin asignar', async () => {
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => {
+        if (tabla === 'asignaciones_gasto') {
+          return { select: vi.fn(() => consultaSobre(asignaciones)) };
+        }
+        return { select: vi.fn(() => consultaSobre([])) };
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.vistaPreviaAnulacionVehiculo('v1');
+
+      expect(res.gastosQueSeAnulan).toEqual({ cantidad: 1, total: 250000 });
+      expect(res.partesSinAsignar).toEqual({ cantidad: 1, total: 50000 });
+    });
+  });
+
+  describe('obtenerDetalle: gastos repartidos', () => {
+    it('el detalle lista solo las asignaciones vigentes, no las anuladas', async () => {
+      // Fake que filtra por eq(), como la base
+      const builder = (filas: Array<Record<string, unknown>>) => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn((col: string, val: unknown) => builder(filas.filter((f) => f[col] === val))),
+          maybeSingle: vi.fn(() => Promise.resolve({ data: filas[0] ?? null, error: null })),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: filas, error: null }).then(ok, ko),
+        };
+        return b;
+      };
+      const tablas: Record<string, Array<Record<string, unknown>>> = {
+        vehiculos: [
+          { id: 'v1', codigo: 'MC-010', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+            estado: 'en_stock', origen: 'compra', fecha_ingreso: '2026-11-01', vendedor_texto: null, valor_ingreso: 3000000 },
+        ],
+        v_costo_vehiculo: [{ vehiculo_id: 'v1', valor_ingreso: 3000000, gastos_asignados: 250000, costo_real: 3250000 }],
+        movimientos: [],
+        asignaciones_gasto: [
+          { vehiculo_id: 'v1', monto: 250000, anulada: false,
+            gasto: { fecha: '2026-11-14', descripcion: 'Pintura', anulado: false, categoria: { nombre: 'Chapa y pintura' } } },
+          { vehiculo_id: 'v1', monto: 90000, anulada: true,
+            gasto: { fecha: '2026-11-14', descripcion: 'Mal cargado', anulado: false, categoria: { nombre: 'Mecánica' } } },
+        ],
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => ({ select: vi.fn(() => builder(tablas[tabla] ?? [])) }));
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.obtenerDetalle('v1');
+
+      expect(res.detalle?.gastos).toHaveLength(1);
+      expect(res.detalle?.gastos[0].descripcion).toBe('Pintura');
+    });
+  });
+
+  describe('vistaPreviaAnularGasto', () => {
+    it('un gasto repartido lista a qué autos les baja el costo y cuánto', async () => {
+      const filas = [
+        { gasto_id: 'g1', monto: 250000, anulada: false, vehiculo: { codigo: 'MC-010' } },
+        { gasto_id: 'g1', monto: 50000, anulada: false, vehiculo: { codigo: 'MC-012' } },
+        { gasto_id: 'g1', monto: 999, anulada: true, vehiculo: { codigo: 'MC-099' } },
+      ];
+      const builder = (f: Array<Record<string, unknown>>): Record<string, unknown> => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn((col: string, val: unknown) => builder(f.filter((x) => x[col] === val))),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: f, error: null }).then(ok, ko),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => builder(filas)) });
+
+      const service = new VehiculosService(mockDb);
+      const vista = await service.vistaPreviaAnularGasto('g1');
+
+      expect(vista).toEqual([
+        { codigo: 'MC-010', monto: 250000 },
+        { codigo: 'MC-012', monto: 50000 },
+      ]);
+    });
+  });
+
   describe('listarSocios', () => {
     it('devuelve los socios con su id y su nombre', async () => {
       const consulta = {
@@ -1063,18 +1262,17 @@ describe('VehiculosService', () => {
             ),
           };
         }
-        return {
-          select: vi.fn().mockReturnValue(
-            consulta({
-              data: [
-                { monto: 250000, gasto: { anulado: false } },
-                { monto: 80000, gasto: { anulado: false } },
-                { monto: 50000, gasto: { anulado: true } },
-              ],
-              error: null,
-            })
-          ),
-        };
+        const asignacionesMock = consulta({
+          data: [
+            { monto: 250000, gasto: { anulado: false } },
+            { monto: 80000, gasto: { anulado: false } },
+            { monto: 50000, gasto: { anulado: true } },
+          ],
+          error: null,
+        }) as Record<string, unknown>;
+        // Las asignaciones de los mismos gastos (para saber si son compartidos): acá no hay ninguna
+        asignacionesMock.in = vi.fn(() => Promise.resolve({ data: [], error: null }));
+        return { select: vi.fn().mockReturnValue(asignacionesMock) };
       });
 
       const service = new VehiculosService(mockDb);

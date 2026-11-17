@@ -12,6 +12,8 @@ export interface MovimientosViewProps {
     movimiento: MovimientoItem,
     motivo: string
   ) => void | Promise<void | { success: boolean; error?: string }>;
+  /** Autos y montos que bajan si se anula un gasto (para el aviso de un gasto repartido) */
+  vistaPreviaGasto?: (gastoId: string) => Promise<Array<{ codigo: string; monto: number }>>;
   /** Lleva al detalle del vehículo de una compra o de un cobro de venta */
   onVerVehiculo?: (vehiculoId: string) => void;
   onVolver: () => void;
@@ -79,12 +81,24 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
   onVerMas,
   onAnular,
   onVerVehiculo,
+  vistaPreviaGasto,
   onVolver,
 }) => {
   const [seleccionadoId, setSeleccionadoId] = useState<string | null>(null);
   const [aAnular, setAAnular] = useState<MovimientoItem | null>(null);
   const [motivo, setMotivo] = useState<string>('');
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
+  // Autos y montos afectados por anular un gasto repartido (null mientras se cargan)
+  const [afectados, setAfectados] = useState<Array<{ codigo: string; monto: number }> | null>(null);
+
+  const abrirAnular = (m: MovimientoItem) => {
+    setMotivo('');
+    setAfectados(null);
+    setAAnular(m);
+    if (m.tipo === 'gasto' && m.gastoId && vistaPreviaGasto) {
+      void vistaPreviaGasto(m.gastoId).then(setAfectados).catch(() => setAfectados(null));
+    }
+  };
 
   const confirmarAnulacion = async () => {
     if (!aAnular || !onAnular) return;
@@ -160,10 +174,7 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => {
-                        setMotivo('');
-                        setAAnular(m);
-                      }}
+                      onClick={() => abrirAnular(m)}
                       className="w-full py-2 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
                     >
                       Anular
@@ -181,6 +192,12 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
           <p className="text-sm text-red-900">
             Vas a anular {textoAnulacion(aAnular)}. ¿Seguro?
           </p>
+          {afectados && afectados.length > 0 && (
+            <p className="text-sm text-red-900">
+              Baja el costo de{' '}
+              {afectados.map((a, i) => `${i > 0 ? 'de ' : ''}${a.codigo} en ${formatMoney(a.monto)}`).join(' y ')}
+            </p>
+          )}
           <div>
             <label htmlFor="anular-motivo" className="block text-xs font-semibold text-gray-700 mb-1">
               Motivo (obligatorio)

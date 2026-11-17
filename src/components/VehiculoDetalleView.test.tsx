@@ -234,8 +234,8 @@ describe('VehiculoDetalleView', () => {
             { cuentaNombre: 'Caja efectivo', monto: 3000000 },
             { cuentaNombre: 'Banco', monto: 1500000 },
           ],
-          gastosCantidad: 2,
-          gastosTotal: 330000,
+          gastosQueSeAnulan: { cantidad: 2, total: 330000 },
+          partesSinAsignar: { cantidad: 1, total: 250000 },
         }}
       />
     );
@@ -246,6 +246,7 @@ describe('VehiculoDetalleView', () => {
     expect(dialogo).toHaveTextContent('Vas a anular la compra de MC-002 por $ 4.500.000');
     expect(dialogo).toHaveTextContent('vuelven $ 3.000.000 a Caja efectivo y $ 1.500.000 a Banco');
     expect(dialogo).toHaveTextContent('Se van a anular también 2 gastos por $ 330.000');
+    expect(dialogo).toHaveTextContent('$ 250.000 de 1 gasto compartido quedan sin asignar');
 
     const confirmar = within(dialogo).getByRole('button', { name: /anular/i });
     expect(confirmar).toBeDisabled();

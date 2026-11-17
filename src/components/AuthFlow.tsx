@@ -442,6 +442,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
                 : undefined
             }
             onVerVehiculo={(vehiculoId) => void abrirDetalle(vehiculoId)}
+            vistaPreviaGasto={vehiculosService ? (gastoId) => vehiculosService.vistaPreviaAnularGasto(gastoId) : undefined}
             onVolver={() => setCurrentView('home')}
           />
         </main>
@@ -481,6 +482,17 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             cuentas={cuentas}
             vehiculos={vehiculos}
             vehiculoPreseleccionado={gastoPreseleccionado ?? undefined}
+            onRegistrarRepartido={
+              vehiculosService
+                ? async (params) => {
+                    const res = await vehiculosService.registrarGastoRepartido(params);
+                    if (res.success) {
+                      await Promise.all([loadCuentasData(), loadVehiculosData()]);
+                    }
+                    return res;
+                  }
+                : undefined
+            }
             onVolver={() => setCurrentView('home')}
             onIrACuentas={() => setCurrentView('cuentas')}
             onRegistrar={
