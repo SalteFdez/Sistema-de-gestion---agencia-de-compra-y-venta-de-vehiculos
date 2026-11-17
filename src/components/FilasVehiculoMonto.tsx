@@ -12,6 +12,8 @@ export interface FilasVehiculoMontoProps {
   vehiculos: VehiculoItem[];
   filas: FilaVehiculo[];
   onChange: (filas: FilaVehiculo[]) => void;
+  /** Cómo se llama lo que falta: "Sin asignar" al registrar, "Queda pendiente" al asignar */
+  etiquetaRestante?: string;
 }
 
 // Vehículos para elegir: los en stock o reservados primero, los vendidos al final y marcados
@@ -24,7 +26,13 @@ const ordenarParaElegir = (vehiculos: VehiculoItem[]): VehiculoItem[] => {
 const etiquetaVehiculo = (v: VehiculoItem): string =>
   `${v.codigo} · ${v.marca} ${v.modelo}${v.estado === 'vendido' ? ' · vendido' : ''}`;
 
-export const FilasVehiculoMonto: React.FC<FilasVehiculoMontoProps> = ({ total, vehiculos, filas, onChange }) => {
+export const FilasVehiculoMonto: React.FC<FilasVehiculoMontoProps> = ({
+  total,
+  vehiculos,
+  filas,
+  onChange,
+  etiquetaRestante = 'Sin asignar',
+}) => {
   const opciones = ordenarParaElegir(vehiculos);
   const asignado = filas.reduce((acc, f) => acc + (f.monto || 0), 0);
   const sinAsignar = total - asignado;
@@ -46,7 +54,7 @@ export const FilasVehiculoMonto: React.FC<FilasVehiculoMontoProps> = ({ total, v
     <div className="space-y-3">
       <p className="text-sm text-gray-800">
         Asignado {formatMoney(asignado)} ·{' '}
-        {sinAsignar >= 0 ? `Sin asignar ${formatMoney(sinAsignar)}` : `Sobran ${formatMoney(-sinAsignar)}`}
+        {sinAsignar >= 0 ? `${etiquetaRestante} ${formatMoney(sinAsignar)}` : `Sobran ${formatMoney(-sinAsignar)}`}
       </p>
 
       <ul className="space-y-2">

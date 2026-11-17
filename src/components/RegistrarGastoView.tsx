@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import type { CuentaItem } from '../lib/cuentas/cuentas-service';
 import {
   cuentasQueQuedaranNegativas,
+  type ContactoProveedor,
+  type CrearContactoResult,
   type VehiculoItem,
   type RegistrarGastoParams,
   type RegistrarGastoResult,
@@ -35,6 +37,9 @@ export interface RegistrarGastoViewProps {
   onRegistrarIngreso?: (params: RegistrarIngresoParams) => Promise<RegistrarIngresoResult>;
   /** Gasto repartido entre varios vehículos (puede quedar parte o todo sin asignar) */
   onRegistrarRepartido?: (params: GastoRepartidoParams) => Promise<GastoRepartidoResult>;
+  /** Proveedor opcional: buscar por nombre y crear uno nuevo (nombre y teléfono) */
+  onBuscarProveedores?: (texto: string) => Promise<ContactoProveedor[]>;
+  onCrearProveedor?: (params: { nombre: string; telefono?: string }) => Promise<CrearContactoResult>;
 }
 
 export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
@@ -48,6 +53,8 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   onRegistrar,
   onRegistrarIngreso,
   onRegistrarRepartido,
+  onBuscarProveedores,
+  onCrearProveedor,
 }) => {
   const titulo = modo === 'ingreso' ? 'Registrar ingreso' : 'Registrar gasto';
   const [monto, setMonto] = useState<string>('');
@@ -58,6 +65,35 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   );
   const [vehiculoId, setVehiculoId] = useState<string | null>(vehiculoPreseleccionado ?? null);
   const [filasVarios, setFilasVarios] = useState<FilaVehiculo[]>([]);
+  // Proveedor opcional (solo para gastos de vehículo)
+  const [proveedor, setProveedor] = useState<ContactoProveedor | null>(null);
+  const [textoProveedor, setTextoProveedor] = useState<string>('');
+  const [resultadosProveedor, setResultadosProveedor] = useState<ContactoProveedor[]>([]);
+  const [telefonoNuevo, setTelefonoNuevo] = useState<string>('');
+  const [errorProveedor, setErrorProveedor] = useState<string | null>(null);
+
+  const buscarProveedor = async (texto: string) => {
+    setTextoProveedor(texto);
+    setErrorProveedor(null);
+    if (!onBuscarProveedores || texto.trim() === '') {
+      setResultadosProveedor([]);
+      return;
+    }
+    setResultadosProveedor(await onBuscarProveedores(texto));
+  };
+
+  const crearProveedor = async () => {
+    if (!onCrearProveedor) return;
+    const res = await onCrearProveedor({ nombre: textoProveedor, telefono: telefonoNuevo.trim() || undefined });
+    if (res.success && res.contacto) {
+      setProveedor(res.contacto);
+      setTextoProveedor('');
+      setResultadosProveedor([]);
+      setTelefonoNuevo('');
+    } else {
+      setErrorProveedor(res.error ?? 'No se pudo crear el proveedor. No se creó nada.');
+    }
+  };
   const [descripcion, setDescripcion] = useState<string>('');
   const [avisoNegativo, setAvisoNegativo] = useState<Array<{ nombre: string; saldoResultante: number }> | null>(null);
   const [resumen, setResumen] = useState<string | null>(null);
@@ -91,6 +127,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
       cuentaId,
       descripcion: descripcion.trim() || undefined,
       asignaciones: filasVarios.map((f) => ({ vehiculoId: f.vehiculoId, monto: f.monto })),
+      proveedorId: proveedor?.id ?? null,
     });
     if (res.success) {
       setErrorGuardado(null);
@@ -123,6 +160,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
       cuentaId,
       descripcion: descripcion.trim() || undefined,
       vehiculoId: alcance === 'vehiculo' ? vehiculoId : null,
+      proveedorId: alcance === 'vehiculo' ? (proveedor?.id ?? null) : null,
     });
     if (res.success) {
       setErrorGuardado(null);
@@ -338,6 +376,70 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
           </div>
         </div>
         )}
+        {modo === 'gasto' && (alcance === 'vehiculo' || alcance === 'varios') && (
+          <div className="space-y-2">
+            <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Proveedor (opcional)</h2>
+            {proveedor ? (
+              <div className="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <span>{proveedor.nombre}</span>
+                <button type="button" onClick={() => setProveedor(null)} className="text-xs text-gray-600 border border-gray-300 rounded px-2 py-1">
+                  Quitar
+                </button>
+              </div>
+            ) : (
+              <>
+                <label htmlFor="gasto-proveedor" className="sr-only">
+                  Proveedor
+                </label>
+                <input
+                  id="gasto-proveedor"
+                  type="text"
+                  value={textoProveedor}
+                  onChange={(e) => void buscarProveedor(e.target.value)}
+                  placeholder="Buscar por nombre"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                {resultadosProveedor.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setProveedor(c)}
+                    className="w-full text-left border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  >
+                    {c.nombre}
+                  </button>
+                ))}
+                {textoProveedor.trim() !== '' && (
+                  <div className="space-y-2 border border-dashed border-gray-300 rounded-lg p-3">
+                    <label htmlFor="gasto-proveedor-telefono" className="block text-xs text-gray-700">
+                      Teléfono (opcional)
+                    </label>
+                    <input
+                      id="gasto-proveedor-telefono"
+                      type="text"
+                      value={telefonoNuevo}
+                      onChange={(e) => setTelefonoNuevo(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void crearProveedor()}
+                      className="w-full py-2 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg"
+                    >
+                      Crear nuevo: {textoProveedor.trim()}
+                    </button>
+                  </div>
+                )}
+                {errorProveedor && (
+                  <p role="alert" className="text-sm text-red-700">
+                    {errorProveedor}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {errorGuardado && (
           <p role="alert" className="text-sm text-red-700">
             {errorGuardado}

@@ -13,8 +13,11 @@ import { RegistrarGastoView, type CategoriaGasto } from './RegistrarGastoView';
 import { MovimientosView } from './MovimientosView';
 import { MoverPlataView } from './MoverPlataView';
 import { PasarPlataView } from './PasarPlataView';
+import { PendientesAsignarView } from './PendientesAsignarView';
+import { AsignarGastoView } from './AsignarGastoView';
+import { formatMoney } from '../lib/format/money';
 import { MovimientoSocioView } from './MovimientoSocioView';
-import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion } from '../lib/vehiculos/vehiculos-service';
+import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion, PendientesResult, PendienteAsignar } from '../lib/vehiculos/vehiculos-service';
 import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
@@ -42,7 +45,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<
-    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos' | 'mover_plata' | 'pasar_plata' | 'aporte_socio' | 'retiro_socio'
+    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos' | 'mover_plata' | 'pasar_plata' | 'aporte_socio' | 'retiro_socio' | 'pendientes' | 'asignar_gasto'
   >('home');
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
   const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
@@ -137,6 +140,18 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     }
   }, [vehiculosService]);
 
+  // Gastos pendientes de asignar: el botón de la pantalla principal muestra su total
+  const [pendientes, setPendientes] = useState<PendientesResult>({ grupos: [], total: 0 });
+  const [gastoAsignar, setGastoAsignar] = useState<PendienteAsignar | null>(null);
+  const loadPendientes = useCallback(async () => {
+    if (!vehiculosService) return;
+    try {
+      setPendientes(await vehiculosService.listarPendientes());
+    } catch {
+      // Sin pendientes cargados, el botón no aparece
+    }
+  }, [vehiculosService]);
+
   // Socios para aporte y retiro (se cargan al abrir esos formularios)
   const [socios, setSocios] = useState<Array<{ id: string; nombre: string }>>([]);
   const loadSocios = useCallback(async () => {
@@ -198,8 +213,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   useEffect(() => {
     if (isUnlocked) {
       loadCuentasData();
+      void loadPendientes();
     }
-  }, [isUnlocked, loadCuentasData]);
+  }, [isUnlocked, loadCuentasData, loadPendientes]);
 
   // Manejador de inactividad: escuchar interacción y visibilidad
   const handleUserActivity = useCallback(() => {
@@ -349,6 +365,44 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
+    if (currentView === 'pendientes') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <PendientesAsignarView
+            pendientes={pendientes}
+            onAsignar={(gasto) => {
+              setGastoAsignar(gasto);
+              setCurrentView('asignar_gasto');
+            }}
+            onVolver={() => setCurrentView('home')}
+          />
+        </main>
+      );
+    }
+
+    if (currentView === 'asignar_gasto' && gastoAsignar) {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <AsignarGastoView
+            gasto={gastoAsignar}
+            vehiculos={vehiculos}
+            onAsignar={async (params) => {
+              if (!vehiculosService) return { success: false, error: 'No hay conexión con el servicio de gastos' };
+              const res = await vehiculosService.asignarGasto(params);
+              if (res.success) {
+                await Promise.all([loadPendientes(), loadVehiculosData(), loadCuentasData()]);
+              }
+              return res;
+            }}
+            onVolver={() => {
+              void loadPendientes();
+              setCurrentView('pendientes');
+            }}
+          />
+        </main>
+      );
+    }
+
     if (currentView === 'mover_plata') {
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
@@ -482,6 +536,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             cuentas={cuentas}
             vehiculos={vehiculos}
             vehiculoPreseleccionado={gastoPreseleccionado ?? undefined}
+            onBuscarProveedores={vehiculosService ? (texto) => vehiculosService.buscarProveedores(texto) : undefined}
+            onCrearProveedor={vehiculosService ? (params) => vehiculosService.crearContacto(params) : undefined}
             onRegistrarRepartido={
               vehiculosService
                 ? async (params) => {
@@ -839,6 +895,18 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             >
               <span>Mover plata</span>
             </button>
+            {pendientes.total > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  void loadPendientes();
+                  setCurrentView('pendientes');
+                }}
+                className="w-full py-4 px-6 bg-amber-600 hover:bg-amber-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+              >
+                <span>Pendientes de asignar · {formatMoney(pendientes.total)} sin asignar</span>
+              </button>
+            )}
           </div>
 
           {/* Configuración provisoria */}

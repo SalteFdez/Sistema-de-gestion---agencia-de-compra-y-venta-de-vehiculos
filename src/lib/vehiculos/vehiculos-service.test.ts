@@ -330,6 +330,7 @@ describe('VehiculosService', () => {
 
       expect(res.success).toBe(true);
       expect(mockDb.rpc).toHaveBeenCalledWith('registrar_gasto_repartido', {
+        p_proveedor_id: null,
         p_monto: 300000,
         p_categoria_id: 'cat1',
         p_cuenta_id: 'c1',
@@ -436,6 +437,223 @@ describe('VehiculosService', () => {
 
       expect(res.detalle?.gastos).toHaveLength(1);
       expect(res.detalle?.gastos[0].descripcion).toBe('Pintura');
+    });
+  });
+
+  describe('contactos (proveedores)', () => {
+    it('crear un proveedor sin nombre no llama a la RPC', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.crearContacto({ nombre: '   ' });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/nombre.*obligatorio/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('crear un proveedor llama a crear_contacto con el tipo proveedor y devuelve el contacto', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { id: 'p1', nombre: 'Mecánico Juan', telefono: null }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.crearContacto({ nombre: ' Mecánico Juan ' });
+
+      expect(res.success).toBe(true);
+      expect(res.contacto).toEqual({ id: 'p1', nombre: 'Mecánico Juan', telefono: null });
+      expect(mockDb.rpc).toHaveBeenCalledWith('crear_contacto', {
+        p_nombre: 'Mecánico Juan',
+        p_telefono: null,
+        p_tipo: 'proveedor',
+      });
+    });
+
+    it('si ya existe con otras mayúsculas, la RPC devuelve el existente y el servicio lo informa como tal', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { id: 'p1', nombre: 'Mecánico Juan', telefono: '1155' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.crearContacto({ nombre: 'mecánico juan', telefono: '1155' });
+
+      expect(res.contacto?.nombre).toBe('Mecánico Juan');
+      expect(res.contacto?.id).toBe('p1');
+    });
+
+    it('si se corta la conexión al crear, no afirma que no se creó', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      const service = new VehiculosService(mockDb);
+      const res = await service.crearContacto({ nombre: 'Mecánico Juan' });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sin conexión/i);
+      expect(res.error).toMatch(/no se pudo confirmar/i);
+    });
+
+    it('buscar proveedores filtra por nombre sin distinguir mayúsculas', async () => {
+      const ilike = vi.fn();
+      const filas = [{ id: 'p1', nombre: 'Mecánico Juan', telefono: null }];
+      const consulta: Record<string, unknown> = {
+        order: vi.fn(() => consulta),
+        ilike: vi.fn((col: string, patron: string) => {
+          ilike(col, patron);
+          return consulta;
+        }),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: filas, error: null }).then(ok, ko),
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => consulta) });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.buscarProveedores('mec');
+
+      expect(mockDb.from).toHaveBeenCalledWith('contactos');
+      expect(ilike).toHaveBeenCalledWith('nombre', '%mec%');
+      expect(res).toEqual(filas);
+    });
+  });
+
+  describe('proveedor en los registros de gasto', () => {
+    it('un gasto de vehículo con proveedor lo pasa a la RPC', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { gasto_id: 'g1', vehiculo_codigo: 'MC-010' }, error: null });
+      const service = new VehiculosService(mockDb);
+      await service.registrarGasto({
+        monto: 250000, categoriaId: 'cat1', cuentaId: 'c1', descripcion: 'Pintura', vehiculoId: 'v1', proveedorId: 'p1',
+      });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_gasto', expect.objectContaining({ p_proveedor_id: 'p1' }));
+    });
+
+    it('un gasto repartido con proveedor lo pasa a la RPC', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { gasto_id: 'g2' }, error: null });
+      const service = new VehiculosService(mockDb);
+      await service.registrarGastoRepartido({
+        monto: 300000, categoriaId: 'cat1', cuentaId: 'c1', asignaciones: [], proveedorId: 'p1',
+      });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_gasto_repartido', expect.objectContaining({ p_proveedor_id: 'p1' }));
+    });
+
+    it('un gasto sin proveedor manda null', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { gasto_id: 'g3' }, error: null });
+      const service = new VehiculosService(mockDb);
+      await service.registrarGastoRepartido({ monto: 80000, categoriaId: 'cat1', cuentaId: 'c1', asignaciones: [] });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_gasto_repartido', expect.objectContaining({ p_proveedor_id: null }));
+    });
+  });
+
+  describe('asignarGasto', () => {
+    const base = { gastoId: 'g1', pendiente: 300000 };
+
+    it('rechaza una asignación de monto 0', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.asignarGasto({ ...base, asignaciones: [{ vehiculoId: 'v1', monto: 0 }] });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('rechaza repetir un vehículo', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.asignarGasto({
+        ...base,
+        asignaciones: [{ vehiculoId: 'v1', monto: 100000 }, { vehiculoId: 'v1', monto: 50000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/repetiste/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si lo asignado supera lo pendiente y dice cuánto sobra', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.asignarGasto({
+        ...base,
+        asignaciones: [{ vehiculoId: 'v1', monto: 250000 }, { vehiculoId: 'v2', monto: 100000 }],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sobran \$ 50\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('asignar llama a asignar_gasto con las asignaciones, sin tocar movimientos ni saldos', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { gasto_id: 'g1' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.asignarGasto({ ...base, asignaciones: [{ vehiculoId: 'v1', monto: 300000 }] });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('asignar_gasto', {
+        p_gasto_id: 'g1',
+        p_asignaciones: [{ vehiculo_id: 'v1', monto: 300000 }],
+      });
+      expect(mockDb.from).not.toHaveBeenCalledWith('movimientos');
+      expect(mockDb.from).not.toHaveBeenCalledWith('cuentas');
+    });
+
+    it('si otro socio ya asignó y no alcanza, lo dice y no se guarda nada', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'El pendiente cambió: otro socio ya asignó parte de este gasto' },
+      });
+      const service = new VehiculosService(mockDb);
+      const res = await service.asignarGasto({ ...base, asignaciones: [{ vehiculoId: 'v1', monto: 300000 }] });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/otro socio ya asignó/i);
+      expect(res.error).toMatch(/no se asignó nada/i);
+    });
+
+    it('si se corta la conexión, no afirma que no se asignó', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      const service = new VehiculosService(mockDb);
+      const res = await service.asignarGasto({ ...base, asignaciones: [{ vehiculoId: 'v1', monto: 300000 }] });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sin conexión/i);
+      expect(res.error).toMatch(/no se pudo confirmar/i);
+    });
+  });
+
+  describe('listarPendientes', () => {
+    const filaPendiente = (id: string, pendiente: number, proveedorId: string | null, proveedorNombre: string | null) => ({
+      gasto_id: id, fecha: '2026-11-14', categoria_nombre: 'Chapa y pintura', descripcion: 'Trabajo',
+      monto_total: pendiente, pendiente, proveedor_id: proveedorId, proveedor_nombre: proveedorNombre,
+    });
+
+    const consultaLista = (filas: unknown[]) => {
+      const b: Record<string, unknown> = {
+        order: vi.fn(() => b),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: filas, error: null }).then(ok, ko),
+      };
+      return b;
+    };
+
+    it('agrupa por proveedor con subtotales, deja "Sin proveedor" al final y calcula el total', async () => {
+      mockDb.from = vi.fn().mockReturnValue({
+        select: vi.fn(() =>
+          consultaLista([
+            filaPendiente('g1', 100000, 'p1', 'Mecánico Juan'),
+            filaPendiente('g2', 60000, 'p1', 'Mecánico Juan'),
+            filaPendiente('g3', 30000, null, null),
+          ])
+        ),
+      });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.listarPendientes();
+
+      expect(mockDb.from).toHaveBeenCalledWith('v_gastos_sin_asignar');
+      expect(res.total).toBe(190000);
+      expect(res.grupos.map((g) => [g.proveedorNombre, g.subtotal, g.gastos.length])).toEqual([
+        ['Mecánico Juan', 160000, 2],
+        ['Sin proveedor', 30000, 1],
+      ]);
+    });
+
+    it('sin pendientes, la lista y el total quedan vacíos', async () => {
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => consultaLista([])) });
+
+      const service = new VehiculosService(mockDb);
+      const res = await service.listarPendientes();
+
+      expect(res).toEqual({ grupos: [], total: 0 });
     });
   });
 

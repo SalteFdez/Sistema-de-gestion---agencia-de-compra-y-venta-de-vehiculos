@@ -33,6 +33,7 @@ export interface CargarStockResult {
 /** Consulta de lectura encadenable (eq / order); al await devuelve { data, error }. */
 export interface Consulta extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
   eq: (col: string, value: unknown) => Consulta;
+  ilike: (col: string, patron: string) => Consulta;
   in: (col: string, values: unknown[]) => Promise<{ data: unknown; error: { message: string } | null }>;
   order: (col: string, options: { ascending: boolean }) => Consulta;
   range: (desde: number, hasta: number) => Consulta;
@@ -160,7 +161,56 @@ export interface TransferirResult {
   error?: string;
 }
 
+export interface ContactoProveedor {
+  id: string;
+  nombre: string;
+  telefono: string | null;
+}
+
+export interface PendienteAsignar {
+  gastoId: string;
+  fecha: string;
+  categoria: string;
+  descripcion: string | null;
+  montoTotal: number;
+  pendiente: number;
+  proveedorId: string | null;
+  proveedorNombre: string | null;
+}
+
+export interface GrupoPendientes {
+  proveedorId: string | null;
+  proveedorNombre: string;
+  subtotal: number;
+  gastos: PendienteAsignar[];
+}
+
+export interface AsignarGastoParams {
+  gastoId: string;
+  /** Lo que queda pendiente al abrir la pantalla; la base lo vuelve a comprobar con el gasto bloqueado */
+  pendiente: number;
+  asignaciones: Array<{ vehiculoId: string; monto: number }>;
+}
+
+export interface AsignarGastoResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface PendientesResult {
+  grupos: GrupoPendientes[];
+  total: number;
+}
+
+export interface CrearContactoResult {
+  success: boolean;
+  error?: string;
+  contacto?: ContactoProveedor;
+}
+
 export interface GastoRepartidoParams {
+  /** Proveedor opcional (contacto de tipo proveedor) */
+  proveedorId?: string | null;
   monto: number;
   categoriaId: string;
   cuentaId: string;
@@ -249,6 +299,8 @@ export interface RegistrarIngresoResult {
 }
 
 export interface RegistrarGastoParams {
+  /** Proveedor opcional (contacto de tipo proveedor); solo para gastos de vehículo */
+  proveedorId?: string | null;
   monto: number;
   categoriaId: string;
   cuentaId: string;
@@ -547,6 +599,111 @@ export class VehiculosService {
     return { success: true };
   }
 
+  /** Asigna plata pendiente de un gasto a vehículos. No crea movimientos: la plata ya había salido. */
+  async asignarGasto(params: AsignarGastoParams): Promise<AsignarGastoResult> {
+    if (params.asignaciones.some((a) => !(a.monto > 0))) {
+      return { success: false, error: 'Cada asignación tiene que ser mayor que 0' };
+    }
+    const ids = params.asignaciones.map((a) => a.vehiculoId);
+    if (new Set(ids).size !== ids.length) {
+      return { success: false, error: 'Repetiste un vehículo: cada vehículo va una sola vez' };
+    }
+    const asignado = params.asignaciones.reduce((acc, a) => acc + a.monto, 0);
+    if (asignado > params.pendiente) {
+      return { success: false, error: `Sobran ${formatMoney(asignado - params.pendiente)} asignados de más` };
+    }
+
+    let error: { message: string } | null;
+    try {
+      ({ error } = await this.db.rpc('asignar_gasto', {
+        p_gasto_id: params.gastoId,
+        p_asignaciones: params.asignaciones.map((a) => ({ vehiculo_id: a.vehiculoId, monto: a.monto })),
+      }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se asignó: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message}. No se asignó nada.` };
+    }
+    return { success: true };
+  }
+
+  /** Gastos con plata sin asignar, agrupados por proveedor (el sin proveedor va al final). */
+  async listarPendientes(): Promise<PendientesResult> {
+    const { data } = await this.db
+      .from('v_gastos_sin_asignar')
+      .select('gasto_id, fecha, categoria_nombre, descripcion, monto_total, pendiente, proveedor_id, proveedor_nombre')
+      .order('fecha', { ascending: false });
+    const filas = (Array.isArray(data) ? data : []) as Array<{
+      gasto_id: string; fecha: string; categoria_nombre: string | null; descripcion: string | null;
+      monto_total: number | string; pendiente: number | string; proveedor_id: string | null; proveedor_nombre: string | null;
+    }>;
+
+    const pendientes: PendienteAsignar[] = filas.map((f) => ({
+      gastoId: f.gasto_id,
+      fecha: f.fecha,
+      categoria: f.categoria_nombre ?? '',
+      descripcion: f.descripcion ?? null,
+      montoTotal: Number(f.monto_total) || 0,
+      pendiente: Number(f.pendiente) || 0,
+      proveedorId: f.proveedor_id ?? null,
+      proveedorNombre: f.proveedor_nombre ?? null,
+    }));
+
+    const porProveedor = new Map<string, GrupoPendientes>();
+    for (const p of pendientes) {
+      const clave = p.proveedorId ?? '';
+      const grupo =
+        porProveedor.get(clave) ??
+        { proveedorId: p.proveedorId, proveedorNombre: p.proveedorNombre ?? 'Sin proveedor', subtotal: 0, gastos: [] };
+      grupo.subtotal += p.pendiente;
+      grupo.gastos.push(p);
+      porProveedor.set(clave, grupo);
+    }
+    const grupos = [...porProveedor.values()].sort((a, b) => {
+      if (a.proveedorId === null) return 1;
+      if (b.proveedorId === null) return -1;
+      return a.proveedorNombre.localeCompare(b.proveedorNombre, 'es');
+    });
+    return { grupos, total: pendientes.reduce((acc, p) => acc + p.pendiente, 0) };
+  }
+
+  /** Proveedores (contactos de tipo proveedor) cuyo nombre contiene el texto, sin distinguir mayúsculas. */
+  async buscarProveedores(texto: string): Promise<ContactoProveedor[]> {
+    const { data } = await this.db
+      .from('contactos')
+      .select('id, nombre, telefono')
+      .ilike('nombre', `%${texto.trim()}%`)
+      .order('nombre', { ascending: true });
+    return ((Array.isArray(data) ? data : []) as Array<{ id: string; nombre: string; telefono: string | null }>).map(
+      (c) => ({ id: c.id, nombre: c.nombre, telefono: c.telefono ?? null })
+    );
+  }
+
+  /** Crea un proveedor. Si ya existe con ese nombre (sin distinguir mayúsculas), la RPC devuelve el existente. */
+  async crearContacto(params: { nombre: string; telefono?: string }): Promise<CrearContactoResult> {
+    const nombre = params.nombre?.trim() ?? '';
+    if (!nombre) {
+      return { success: false, error: 'El nombre es obligatorio' };
+    }
+    let data: unknown;
+    let error: { message: string } | null;
+    try {
+      ({ data, error } = await this.db.rpc('crear_contacto', {
+        p_nombre: nombre,
+        p_telefono: params.telefono?.trim() || null,
+        p_tipo: 'proveedor',
+      }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se creó el proveedor: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message}. No se creó nada.` };
+    }
+    const f = data as { id: string; nombre: string; telefono: string | null };
+    return { success: true, contacto: { id: f.id, nombre: f.nombre, telefono: f.telefono ?? null } };
+  }
+
   /** Autos y montos que bajan si se anula un gasto (solo asignaciones vigentes). */
   async vistaPreviaAnularGasto(gastoId: string): Promise<Array<{ codigo: string; monto: number }>> {
     const { data } = await this.db
@@ -583,6 +740,7 @@ export class VehiculosService {
     let error: { message: string } | null;
     try {
       ({ error } = await this.db.rpc('registrar_gasto_repartido', {
+        p_proveedor_id: params.proveedorId ?? null,
         p_monto: params.monto,
         p_categoria_id: params.categoriaId,
         p_cuenta_id: params.cuentaId,
@@ -832,6 +990,7 @@ export class VehiculosService {
     let error: { message: string } | null;
     try {
       ({ data, error } = await this.db.rpc('registrar_gasto', {
+        p_proveedor_id: params.proveedorId ?? null,
         p_monto: params.monto,
         p_categoria_id: params.categoriaId,
         p_cuenta_id: params.cuentaId,

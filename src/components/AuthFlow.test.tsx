@@ -463,6 +463,73 @@ describe('AuthFlow UI Integration', () => {
     });
   });
 
+  describe('Pendientes de asignar en la pantalla principal', () => {
+    const authDesbloqueado = () => ({
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({ id: 'u1', email: 'agustin@machoman.local', nombre: 'Agustín Fernandez' }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    });
+
+    it('el botón muestra el total pendiente y abre la pantalla de pendientes', async () => {
+      mockAuthService = authDesbloqueado();
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockResolvedValue([]),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        listarPendientes: vi.fn().mockResolvedValue({
+          total: 190000,
+          grupos: [
+            {
+              proveedorId: 'p1',
+              proveedorNombre: 'Mecánico Juan',
+              subtotal: 190000,
+              gastos: [
+                { gastoId: 'g1', fecha: '2026-11-14', categoria: 'Chapa y pintura', descripcion: 'Pintura', montoTotal: 250000, pendiente: 190000, proveedorId: 'p1', proveedorNombre: 'Mecánico Juan' },
+              ],
+            },
+          ],
+        }),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      const boton = await screen.findByRole('button', { name: /pendientes de asignar.*\$ 190\.000/i });
+      fireEvent.click(boton);
+
+      expect(await screen.findByRole('heading', { name: 'Pendientes de asignar' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Mecánico Juan/ })).toBeInTheDocument();
+    });
+
+    it('sin pendientes el botón no aparece', async () => {
+      mockAuthService = authDesbloqueado();
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockResolvedValue([]),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        listarPendientes: vi.fn().mockResolvedValue({ total: 0, grupos: [] }),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      await waitFor(() => expect(vehiculosService.listarPendientes).toHaveBeenCalled());
+      expect(screen.queryByRole('button', { name: /pendientes de asignar/i })).not.toBeInTheDocument();
+    });
+  });
+
   it('en Balances muestra el Inventario que trae el servicio, sin cambiar el dinero disponible', async () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),
