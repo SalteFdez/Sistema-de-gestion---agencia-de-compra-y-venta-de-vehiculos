@@ -62,6 +62,24 @@ describe('VehiculoDetalleView: anular una venta financiada', () => {
   });
 });
 
+describe('VehiculoDetalleView: cobros de cuotas al anular la venta', () => {
+  it('el aviso lista los cobros de cuotas que salen de las cuentas', () => {
+    render(
+      <VehiculoDetalleView
+        detalle={vendido}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+        onAnularVenta={vi.fn()}
+        cobrosCuotas={{ cantidad: 2, total: 1000000 }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Anular venta' }));
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('2 cobros de cuotas por $ 1.000.000 salen de las cuentas');
+  });
+});
+
 describe('VenderVehiculoView: resumen con financiación', () => {
   it('el resumen dice cuánto queda por cobrar, en cuántas cuotas y cuándo empieza', async () => {
     const vehiculos: VehiculoItem[] = [

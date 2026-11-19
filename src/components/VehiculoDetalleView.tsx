@@ -13,6 +13,8 @@ export interface VehiculoDetalleViewProps {
   onAnularVenta?: (motivo: string) => void | Promise<void | { success: boolean; error?: string }>;
   /** Lleva al detalle de un auto recibido en parte de pago */
   onVerRecibido?: (vehiculoId: string) => void;
+  /** Cobros de cuotas ya hechos de esta venta: salen de las cuentas si se anula la venta */
+  cobrosCuotas?: { cantidad: number; total: number };
   /** Autos recibidos de la venta con lo que se anula con cada uno (para el aviso de anular la venta) */
   vistaPreviaVenta?: Array<{ id: string; codigo: string; gastosQueSeAnulan?: { cantidad: number; total: number } }>;
 }
@@ -60,6 +62,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   onAnularVenta,
   onVerRecibido,
   vistaPreviaVenta,
+  cobrosCuotas,
 }) => {
   const [aAnular, setAAnular] = useState<'vehiculo' | 'venta' | null>(null);
   const [motivo, setMotivo] = useState<string>('');
@@ -71,6 +74,12 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
       const lineasVenta = [
         `Vas a anular la venta de ${detalle.codigo} por ${formatMoney(detalle.venta.precioVenta)}; salen ${cobros}`,
       ];
+      if (cobrosCuotas && cobrosCuotas.cantidad > 0) {
+        const n = cobrosCuotas.cantidad;
+        lineasVenta.push(
+          `Además, ${n} ${n === 1 ? 'cobro de cuota' : 'cobros de cuotas'} por ${formatMoney(cobrosCuotas.total)} salen de las cuentas`
+        );
+      }
       // Venta financiada: las cuotas dejan de contar, y lo que quedaba por cobrar se anula con ellas
       const fin = detalle.venta.financiacion;
       if (fin) {

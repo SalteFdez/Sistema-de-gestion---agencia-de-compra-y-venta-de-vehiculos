@@ -29,6 +29,7 @@ const ETIQUETA_TIPO: Record<string, string> = {
   retiro_socio: 'Retiro de socio',
   transferencia_salida: 'Pase',
   transferencia_entrada: 'Pase',
+  cuota_cobro: 'Cobro de cuota',
 };
 
 // Resumen de lo que se va a anular: "el ingreso de $ 80.000 · Comisión · Banco"
@@ -52,6 +53,7 @@ const tituloMovimiento = (m: MovimientoItem): string => {
   if (m.tipo === 'retiro_socio') return `Retiro de ${m.socioNombre ?? ''}`;
   if (m.tipo === 'transferencia_salida') return `Pase a ${m.cuentaContraparte ?? ''}`;
   if (m.tipo === 'transferencia_entrada') return `Pase desde ${m.cuentaContraparte ?? ''}`;
+  if (m.tipo === 'cuota_cobro' && m.cuotaNumero) return `Cobro de cuota ${m.cuotaNumero}/${m.cuotaTotal ?? ''} · ${m.vehiculoCodigo ?? ''}`;
   return m.descripcion ?? ETIQUETA_TIPO[m.tipo];
 };
 
@@ -68,7 +70,7 @@ const diaMesBA = (iso: string): string => {
 };
 
 // Lo que entra a una cuenta suma (verde); lo que sale resta (rojo)
-const TIPOS_QUE_ENTRAN = new Set(['saldo_inicial', 'venta_cobro', 'ingreso_otro', 'transferencia_entrada', 'aporte_socio']);
+const TIPOS_QUE_ENTRAN = new Set(['saldo_inicial', 'venta_cobro', 'ingreso_otro', 'transferencia_entrada', 'aporte_socio', 'cuota_cobro']);
 
 const formatoFecha = (iso: string): string => {
   const [anio, mes, dia] = iso.split('-');

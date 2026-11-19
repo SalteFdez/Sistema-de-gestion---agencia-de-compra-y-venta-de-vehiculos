@@ -243,6 +243,18 @@ describe('MovimientosView', () => {
     expect(vistaPreviaGasto).toHaveBeenCalledWith('g1');
   });
 
+  it('un cobro de cuota se muestra como "Cobro de cuota 2/4 · MC-014", en verde como entrada', () => {
+    const cobro: MovimientoItem = {
+      ...base, id: 'q1', tipo: 'cuota_cobro', monto: 500000, descripcion: 'Cuota 2/4 · MC-014',
+      vehiculoCodigo: 'MC-014', cuotaNumero: 2, cuotaTotal: 4, categoriaNombre: null, gastoId: null,
+    };
+
+    render(<MovimientosView movimientos={[cobro]} onVolver={vi.fn()} />);
+
+    const fila = screen.getByText('Cobro de cuota 2/4 · MC-014').closest('li') as HTMLElement;
+    expect(within(fila).getByText('+ $ 500.000')).toHaveClass('text-green-700');
+  });
+
   it('"Ver más" aparece cuando puede haber más movimientos y los trae', () => {
     const onVerMas = vi.fn();
 

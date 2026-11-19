@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CuentaItem } from '../lib/cuentas/cuentas-service';
 import { formatMoney } from '../lib/format/money';
+import type { CuotaPorCobrar } from '../lib/vehiculos/vehiculos-service';
 
 export interface BalancesViewProps {
   totalDisponible: number;
@@ -10,6 +11,8 @@ export interface BalancesViewProps {
   /** Lo que queda por cobrar de las ventas financiadas (no es disponible) */
   porCobrar?: number;
   errorPorCobrar?: boolean;
+  /** Cuotas con saldo: se muestran las próximas 3 */
+  proximasCuotas?: CuotaPorCobrar[];
   onVolver: () => void;
   onIrACuentas: () => void;
 }
@@ -21,6 +24,7 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
   errorInventario = false,
   porCobrar = 0,
   errorPorCobrar = false,
+  proximasCuotas = [],
   onVolver,
   onIrACuentas,
 }) => {
@@ -77,6 +81,32 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
           <div className="text-lg font-bold text-gray-900 mt-1">{formatMoney(porCobrar)}</div>
         )}
       </section>
+
+      {/* Próximas 3 cuotas por cobrar: las vencidas van primero y en rojo */}
+      {proximasCuotas.length > 0 && (
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">Próximas cuotas</h2>
+          <ul className="space-y-1.5">
+            {[...proximasCuotas]
+              .sort((a, b) => {
+                const va = a.estado === 'vencida' ? 0 : 1;
+                const vb = b.estado === 'vencida' ? 0 : 1;
+                if (va !== vb) return va - vb;
+                return a.vencimiento.localeCompare(b.vencimiento);
+              })
+              .slice(0, 3)
+              .map((c) => {
+                const [anio, mes, dia] = c.vencimiento.split('-');
+                return (
+                  <li key={c.cuotaId} className={`text-sm flex justify-between ${c.estado === 'vencida' ? 'text-red-700' : 'text-gray-800'}`}>
+                    <span>{`${dia}/${mes}/${anio} · ${c.comprador ?? 'Sin comprador'}`}</span>
+                    <span className="font-medium">{formatMoney(c.saldo)}</span>
+                  </li>
+                );
+              })}
+          </ul>
+        </section>
+      )}
 
       {/* Detalle por cuenta */}
       <section className="flex-1">

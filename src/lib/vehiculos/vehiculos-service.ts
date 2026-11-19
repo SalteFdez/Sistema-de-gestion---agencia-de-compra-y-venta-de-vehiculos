@@ -150,6 +150,9 @@ export interface MovimientoItem {
   cuentaContraparte?: string | null;
   /** Para un aporte o un retiro: el socio */
   socioNombre?: string | null;
+  /** Para un cobro de cuota: número de la cuota y cantidad de cuotas de la venta */
+  cuotaNumero?: number | null;
+  cuotaTotal?: number | null;
 }
 
 export const TAMANO_PAGINA_MOVIMIENTOS = 50;
@@ -239,6 +242,23 @@ export interface MovimientoSocioParams {
 export interface MovimientoSocioResult {
   success: boolean;
   error?: string;
+}
+
+export interface CuotaPorCobrar {
+  cuotaId: string;
+  ventaId: string;
+  numero: number;
+  totalCuotas: number;
+  monto: number;
+  cobrado: number;
+  saldo: number;
+  /** cobrada | vencida | parcial | pendiente */
+  estado: string;
+  /** AAAA-MM-DD */
+  vencimiento: string;
+  vehiculoCodigo: string;
+  comprador: string | null;
+  compradorTelefono: string | null;
 }
 
 export interface PermutaParams {
@@ -535,6 +555,7 @@ export class VehiculosService {
       .select(
         'id, fecha, tipo, monto, descripcion, anulado, anulado_at, motivo_anulacion, gasto_id, venta_id, vehiculo_id, ' +
           'transferencia_id, socio_id, socio:usuarios!socio_id(nombre), ' +
+          'cuota:cuotas(numero, financiacion:financiaciones(cantidad_cuotas)), ' +
           'cuenta:cuentas(nombre), vehiculo:vehiculos(codigo), categoria:categorias(nombre), ' +
           'creador:usuarios!created_by(nombre), anulador:usuarios!anulado_por(nombre)'
       )
@@ -558,6 +579,7 @@ export class VehiculosService {
       transferencia_id: string | null;
       socio_id: string | null;
       socio: { nombre: string } | null;
+      cuota: { numero: number; financiacion: { cantidad_cuotas: number } | null } | null;
       cuenta: { nombre: string } | null;
       vehiculo: { codigo: string } | null;
       categoria: { nombre: string } | null;
@@ -587,6 +609,8 @@ export class VehiculosService {
         ? patas.find((p) => p.transferencia_id === f.transferencia_id && p.id !== f.id)?.cuenta?.nombre ?? null
         : null,
       socioNombre: f.socio?.nombre ?? null,
+      cuotaNumero: f.cuota?.numero ?? null,
+      cuotaTotal: f.cuota?.financiacion?.cantidad_cuotas ?? null,
       fecha: f.fecha,
       tipo: f.tipo,
       monto: Number(f.monto) || 0,
@@ -942,6 +966,87 @@ export class VehiculosService {
       permutas: recibidos,
       avisosFoto,
     };
+  }
+
+  /** Cobros de cuotas vigentes de una venta: cantidad y suma (salen de las cuentas si se anula la venta). */
+  async vistaPreviaCobrosCuotas(ventaId: string): Promise<{ cantidad: number; total: number }> {
+    const { data } = await this.db
+      .from('movimientos')
+      .select('monto, venta_id, tipo, anulado')
+      .eq('venta_id', ventaId)
+      .eq('tipo', 'cuota_cobro')
+      .eq('anulado', false);
+    const filas = (Array.isArray(data) ? data : []) as Array<{ monto: number | string }>;
+    return {
+      cantidad: filas.length,
+      total: filas.reduce((acc, f) => acc + (Math.abs(Number(f.monto)) || 0), 0),
+    };
+  }
+
+  /** Cobra total o parcial una cuota, en la cuenta donde entró. No cobra más que el saldo. */
+  async cobrarCuota(params: { cuotaId: string; cuentaId: string; monto: number; saldo: number }): Promise<{ success: boolean; error?: string }> {
+    if (!(params.monto > 0)) {
+      return { success: false, error: 'El monto tiene que ser mayor que 0' };
+    }
+    if (params.monto > params.saldo) {
+      return { success: false, error: `Solo quedan ${formatMoney(params.saldo)} de esta cuota` };
+    }
+    if (!params.cuentaId) {
+      return { success: false, error: 'Elegí la cuenta donde entró la plata' };
+    }
+    let error: { message: string } | null;
+    try {
+      ({ error } = await this.db.rpc('cobrar_cuota', {
+        p_cuota_id: params.cuotaId,
+        p_cuenta_id: params.cuentaId,
+        p_monto: params.monto,
+      }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se cobró: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message}. No se cobró nada.` };
+    }
+    return { success: true };
+  }
+
+  /** Cuotas con saldo, con las vencidas primero y después por fecha de vencimiento. */
+  async listarCuotasPorCobrar(): Promise<CuotaPorCobrar[]> {
+    const { data, error } = await this.db
+      .from('v_cuotas')
+      .select('cuota_id, venta_id, numero, monto, fecha_vencimiento, cobrado, saldo, estado, vehiculo_codigo, comprador, comprador_telefono, total_cuotas')
+      .order('fecha_vencimiento', { ascending: true });
+    if (error) {
+      throw new Error(error.message);
+    }
+    const filas = (Array.isArray(data) ? data : []) as Array<{
+      cuota_id: string; venta_id: string; numero: number; monto: number | string; fecha_vencimiento: string;
+      cobrado: number | string; saldo: number | string; estado: string; vehiculo_codigo: string;
+      comprador: string | null; comprador_telefono: string | null; total_cuotas: number | string;
+    }>;
+    const cuotas: CuotaPorCobrar[] = filas
+      .filter((f) => Number(f.saldo) > 0)
+      .map((f) => ({
+        cuotaId: f.cuota_id,
+        ventaId: f.venta_id,
+        numero: Number(f.numero),
+        totalCuotas: Number(f.total_cuotas) || 0,
+        monto: Number(f.monto) || 0,
+        cobrado: Number(f.cobrado) || 0,
+        saldo: Number(f.saldo) || 0,
+        estado: f.estado,
+        vencimiento: f.fecha_vencimiento,
+        vehiculoCodigo: f.vehiculo_codigo,
+        comprador: f.comprador ?? null,
+        compradorTelefono: f.comprador_telefono ?? null,
+      }));
+    // Vencidas primero; dentro de cada grupo, por fecha
+    return cuotas.sort((a, b) => {
+      const va = a.estado === 'vencida' ? 0 : 1;
+      const vb = b.estado === 'vencida' ? 0 : 1;
+      if (va !== vb) return va - vb;
+      return a.vencimiento.localeCompare(b.vencimiento);
+    });
   }
 
   /** Lo que queda por cobrar de las ventas financiadas (no es dinero disponible). */

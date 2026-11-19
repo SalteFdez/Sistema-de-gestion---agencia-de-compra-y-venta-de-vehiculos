@@ -15,9 +15,11 @@ import { MoverPlataView } from './MoverPlataView';
 import { PasarPlataView } from './PasarPlataView';
 import { PendientesAsignarView } from './PendientesAsignarView';
 import { AsignarGastoView } from './AsignarGastoView';
+import { CuotasPorCobrarView, contarVencidas } from './CuotasPorCobrarView';
+import { CobrarCuotaView } from './CobrarCuotaView';
 import { formatMoney } from '../lib/format/money';
 import { MovimientoSocioView } from './MovimientoSocioView';
-import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion, PendientesResult, PendienteAsignar } from '../lib/vehiculos/vehiculos-service';
+import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion, PendientesResult, PendienteAsignar, CuotaPorCobrar } from '../lib/vehiculos/vehiculos-service';
 import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
@@ -45,7 +47,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<
-    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos' | 'mover_plata' | 'pasar_plata' | 'aporte_socio' | 'retiro_socio' | 'pendientes' | 'asignar_gasto'
+    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos' | 'mover_plata' | 'pasar_plata' | 'aporte_socio' | 'retiro_socio' | 'pendientes' | 'asignar_gasto' | 'cuotas_por_cobrar' | 'cobrar_cuota'
   >('home');
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
   const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
@@ -55,6 +57,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   // Lo que se anula con la compra, para el aviso "¿Seguro?" del detalle
   const [vistaPreviaDetalle, setVistaPreviaDetalle] = useState<VistaPreviaAnulacion | undefined>(undefined);
   // Autos recibidos en la venta del detalle, para el aviso de anular la venta
+  // Cobros de cuotas ya hechos de la venta del detalle (salen de las cuentas si se anula)
+  const [cobrosCuotasVenta, setCobrosCuotasVenta] = useState<{ cantidad: number; total: number } | undefined>(undefined);
   const [vistaPreviaVenta, setVistaPreviaVenta] = useState<Array<{ id: string; codigo: string; gastosQueSeAnulan?: { cantidad: number; total: number } }> | undefined>(undefined);
 
   const abrirDetalle = async (id: string) => {
@@ -65,6 +69,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     setDetalleError(false);
     setVistaPreviaDetalle(undefined);
     setVistaPreviaVenta(undefined);
+    setCobrosCuotasVenta(undefined);
     setFotoDetalle(item?.fotoUrl ?? null);
     setCurrentView('vehiculo_detalle');
     try {
@@ -76,6 +81,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             setVistaPreviaVenta(await vehiculosService.vistaPreviaAnularVenta(res.detalle.venta.ventaId));
           } catch {
             // Sin la vista previa, el aviso de anular la venta no lista los autos recibidos
+          }
+        }
+        if (res.detalle.estado === 'vendido' && res.detalle.venta) {
+          try {
+            setCobrosCuotasVenta(await vehiculosService.vistaPreviaCobrosCuotas(res.detalle.venta.ventaId));
+          } catch {
+            // Sin el dato, el aviso de anular la venta no lista los cobros de cuotas
           }
         }
         if (res.detalle.estado !== 'vendido' && !res.detalle.anulado) {
@@ -147,6 +159,18 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       setVehiculosError(false);
     } catch {
       setVehiculosError(true);
+    }
+  }, [vehiculosService]);
+
+  // Cuotas con saldo (lista "Cuotas por cobrar", próximas en Balances y contador de vencidas)
+  const [cuotas, setCuotas] = useState<CuotaPorCobrar[]>([]);
+  const [cuotaCobrar, setCuotaCobrar] = useState<CuotaPorCobrar | null>(null);
+  const loadCuotas = useCallback(async () => {
+    if (!vehiculosService) return;
+    try {
+      setCuotas(await vehiculosService.listarCuotasPorCobrar());
+    } catch {
+      // Sin la lista, el botón no muestra contador
     }
   }, [vehiculosService]);
 
@@ -238,8 +262,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       loadCuentasData();
       void loadPendientes();
       void loadPorCobrar();
+      void loadCuotas();
     }
-  }, [isUnlocked, loadCuentasData, loadPendientes, loadPorCobrar]);
+  }, [isUnlocked, loadCuentasData, loadPendientes, loadPorCobrar, loadCuotas]);
 
   // Manejador de inactividad: escuchar interacción y visibilidad
   const handleUserActivity = useCallback(() => {
@@ -389,6 +414,44 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
+    if (currentView === 'cuotas_por_cobrar') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <CuotasPorCobrarView
+            cuotas={cuotas}
+            onCobrar={(cuota) => {
+              setCuotaCobrar(cuota);
+              setCurrentView('cobrar_cuota');
+            }}
+            onVolver={() => setCurrentView('home')}
+          />
+        </main>
+      );
+    }
+
+    if (currentView === 'cobrar_cuota' && cuotaCobrar) {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <CobrarCuotaView
+            cuota={cuotaCobrar}
+            cuentas={cuentas.map((c) => ({ id: c.id, nombre: c.nombre, saldo: c.saldo }))}
+            onCobrar={async (params) => {
+              if (!vehiculosService) return { success: false, error: 'No hay conexión con el servicio de cuotas' };
+              const res = await vehiculosService.cobrarCuota(params);
+              if (res.success) {
+                await Promise.all([loadCuotas(), loadCuentasData(), loadPorCobrar(), loadMovimientos(0)]);
+              }
+              return res;
+            }}
+            onVolver={() => {
+              void loadCuotas();
+              setCurrentView('cuotas_por_cobrar');
+            }}
+          />
+        </main>
+      );
+    }
+
     if (currentView === 'pendientes') {
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
@@ -513,7 +576,14 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
                           anulado: m.anulado,
                         });
                     if (res.success) {
-                      await Promise.all([loadMovimientos(0), loadCuentasData(), loadVehiculosData()]);
+                      // Anular un cobro de cuota baja la cuenta, vuelve el saldo de la cuota y sube Por cobrar
+                      await Promise.all([
+                        loadMovimientos(0),
+                        loadCuentasData(),
+                        loadVehiculosData(),
+                        loadPorCobrar(),
+                        loadCuotas(),
+                      ]);
                     }
                     return res;
                   }
@@ -653,6 +723,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             }}
             vistaPrevia={vistaPreviaDetalle}
             vistaPreviaVenta={vistaPreviaVenta}
+            cobrosCuotas={cobrosCuotasVenta}
             onVerRecibido={(vehiculoId) => void abrirDetalle(vehiculoId)}
             onAnularVehiculo={
               vehiculosService
@@ -770,6 +841,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           <BalancesView
             porCobrar={porCobrar}
             errorPorCobrar={errorPorCobrar}
+            proximasCuotas={cuotas}
             totalDisponible={totalDisponible}
             cuentas={cuentas}
             inventario={inventario}
@@ -923,6 +995,20 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             >
               <span>Mover plata</span>
             </button>
+            {cuotas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  void loadCuotas();
+                  setCurrentView('cuotas_por_cobrar');
+                }}
+                className="w-full py-4 px-6 bg-gray-800 hover:bg-gray-900 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
+              >
+                <span>
+                  {`Cuotas por cobrar${contarVencidas(cuotas) > 0 ? ` · ${contarVencidas(cuotas)} vencida${contarVencidas(cuotas) === 1 ? '' : 's'}` : ''}`}
+                </span>
+              </button>
+            )}
             {pendientes.total > 0 && (
               <button
                 type="button"

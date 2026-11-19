@@ -935,6 +935,113 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('cobrarCuota', () => {
+    const base = { cuotaId: 'c1', cuentaId: 'cta1', saldo: 300000 };
+
+    it('no cobra 0', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.cobrarCuota({ ...base, monto: 0 });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('no cobra más que lo que falta de la cuota', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.cobrarCuota({ ...base, monto: 400000 });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/solo quedan \$ 300\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('sin cuenta elegida no cobra', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.cobrarCuota({ ...base, cuentaId: '', monto: 100000 });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/cuenta/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('un cobro válido llama a cobrar_cuota con la cuota, la cuenta y el monto', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { movimiento_id: 'm1' }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.cobrarCuota({ ...base, monto: 300000 });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('cobrar_cuota', {
+        p_cuota_id: 'c1',
+        p_cuenta_id: 'cta1',
+        p_monto: 300000,
+      });
+    });
+
+    it('si se corta la conexión, no afirma que no se cobró', async () => {
+      mockDb.rpc = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      const service = new VehiculosService(mockDb);
+      const res = await service.cobrarCuota({ ...base, monto: 100000 });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/sin conexión/i);
+      expect(res.error).toMatch(/no se pudo confirmar/i);
+    });
+
+    it('si otro cobro llegó primero y ya no hay ese saldo, lo dice y no cobra nada', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'La cuota ya no tiene ese saldo: otro cobro se registró antes' },
+      });
+      const service = new VehiculosService(mockDb);
+      const res = await service.cobrarCuota({ ...base, monto: 300000 });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/otro cobro se registró antes/i);
+      expect(res.error).toMatch(/no se cobró nada/i);
+    });
+  });
+
+  describe('listarCuotasPorCobrar', () => {
+    const fila = (cuotaId: string, estado: string, vencimiento: string, monto: number, cobrado: number) => ({
+      cuota_id: cuotaId, venta_id: 'ven1', numero: 1, monto, fecha_vencimiento: vencimiento,
+      cobrado, saldo: monto - cobrado, estado, vehiculo_codigo: 'MC-014', comprador: 'Pedro',
+      comprador_telefono: '1155', total_cuotas: 4,
+    });
+
+    it('lista solo las cuotas con saldo, vencidas primero y después por vencimiento', async () => {
+      const filas = [
+        fila('c-enero', 'pendiente', '2027-01-15', 500000, 0),
+        fila('c-cobrada', 'cobrada', '2026-09-15', 500000, 500000),
+        fila('c-vencida', 'vencida', '2026-10-15', 500000, 0),
+        fila('c-parcial', 'parcial', '2026-12-15', 500000, 200000),
+      ];
+      const consulta: Record<string, unknown> = {
+        order: vi.fn(() => consulta),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: filas, error: null }).then(ok, ko),
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => consulta) });
+
+      const cuotas = await new VehiculosService(mockDb).listarCuotasPorCobrar();
+
+      expect(mockDb.from).toHaveBeenCalledWith('v_cuotas');
+      expect(cuotas.map((c) => c.cuotaId)).toEqual(['c-vencida', 'c-parcial', 'c-enero']);
+      expect(cuotas[1]).toEqual(expect.objectContaining({ saldo: 300000, cobrado: 200000, estado: 'parcial', compradorTelefono: '1155' }));
+    });
+
+    it('sin cuotas pendientes devuelve la lista vacía', async () => {
+      const consulta: Record<string, unknown> = {
+        order: vi.fn(() => consulta),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: [], error: null }).then(ok, ko),
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => consulta) });
+
+      expect(await new VehiculosService(mockDb).listarCuotasPorCobrar()).toEqual([]);
+    });
+  });
+
   describe('obtenerPorCobrar', () => {
     it('devuelve el total que queda por cobrar de la vista v_por_cobrar', async () => {
       mockDb.from = vi.fn().mockReturnValue({
@@ -990,6 +1097,71 @@ describe('VehiculosService', () => {
       expect(mockDb.from).toHaveBeenCalledWith('venta_permutas');
       expect(res.map((r) => r.codigo)).toEqual(['MC-031', 'MC-032']);
       expect(res[1].gastosQueSeAnulan).toEqual({ cantidad: 1, total: 80000 });
+    });
+  });
+
+  describe('vistaPreviaCobrosCuotas', () => {
+    it('suma solo los cobros de cuotas vigentes de la venta', async () => {
+      const filas = [
+        { venta_id: 'ven1', tipo: 'cuota_cobro', anulado: false, monto: 500000 },
+        { venta_id: 'ven1', tipo: 'cuota_cobro', anulado: false, monto: 500000 },
+        { venta_id: 'ven1', tipo: 'cuota_cobro', anulado: true, monto: 500000 },
+        { venta_id: 'ven1', tipo: 'venta_cobro', anulado: false, monto: 1000 },
+        { venta_id: 'ven2', tipo: 'cuota_cobro', anulado: false, monto: 700000 },
+      ];
+      const builder = (f: Array<Record<string, unknown>>): Record<string, unknown> => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn((col: string, val: unknown) => builder(f.filter((x) => x[col] === val))),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: f, error: null }).then(ok, ko),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => builder(filas)) });
+
+      const res = await new VehiculosService(mockDb).vistaPreviaCobrosCuotas('ven1');
+      // Venta ven1: solo los dos cobros de cuota vigentes; el anulado, el de venta y los de otra venta no cuentan
+
+      expect(res).toEqual({ cantidad: 2, total: 1000000 });
+    });
+  });
+
+  describe('anularMovimiento: cobro de cuota', () => {
+    it('anular un cobro de cuota llama a anular_movimiento con su id y el motivo', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: null, error: null });
+      const res = await new VehiculosService(mockDb).anularMovimiento({
+        movimientoId: 'q1', gastoId: null, motivo: 'cobré mal la cuota', tipo: 'cuota_cobro', anulado: false,
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('anular_movimiento', { p_movimiento_id: 'q1', p_motivo: 'cobré mal la cuota' });
+    });
+  });
+
+  describe('listarMovimientos: cobros de cuota', () => {
+    it('un cobro de cuota trae su número y la cantidad de cuotas de la venta', async () => {
+      const pagina = [
+        {
+          id: 'q1', fecha: '2026-12-15', tipo: 'cuota_cobro', monto: 500000, descripcion: 'Cuota 2/4 · MC-014',
+          anulado: false, anulado_at: null, motivo_anulacion: null, gasto_id: null, venta_id: 'ven1', vehiculo_id: 'v14',
+          transferencia_id: null, socio_id: null, socio: null, cuota_id: 'c2',
+          cuota: { numero: 2, financiacion: { cantidad_cuotas: 4 } },
+          cuenta: { nombre: 'Banco' }, vehiculo: { codigo: 'MC-014' }, categoria: null,
+          creador: { nombre: 'Agustín Fernandez' }, anulador: null,
+        },
+      ];
+      const chain = () => {
+        const b: Record<string, unknown> = {
+          order: vi.fn(() => b),
+          range: vi.fn(() => Promise.resolve({ data: pagina, error: null })),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => chain()) });
+
+      const items = await new VehiculosService(mockDb).listarMovimientos(0);
+
+      expect(items[0]).toEqual(expect.objectContaining({ tipo: 'cuota_cobro', cuotaNumero: 2, cuotaTotal: 4, vehiculoCodigo: 'MC-014' }));
     });
   });
 

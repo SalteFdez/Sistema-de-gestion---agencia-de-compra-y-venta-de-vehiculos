@@ -463,6 +463,41 @@ describe('AuthFlow UI Integration', () => {
     });
   });
 
+  describe('Cuotas por cobrar en la pantalla principal', () => {
+    const authDesbloqueado = () => ({
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({ id: 'u1', email: 'agustin@machoman.local', nombre: 'Agustín Fernandez' }),
+      validatePin: vi.fn().mockResolvedValue(true),
+    });
+    const cuotaVencida = {
+      cuotaId: 'c1', ventaId: 'ven1', numero: 2, totalCuotas: 4, monto: 500000, cobrado: 0, saldo: 500000,
+      estado: 'vencida', vencimiento: '2026-10-15', vehiculoCodigo: 'MC-014', comprador: 'Pedro', compradorTelefono: null,
+    };
+
+    it('el botón muestra el contador de cuotas vencidas', async () => {
+      mockAuthService = authDesbloqueado();
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockResolvedValue([]),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        listarPendientes: vi.fn().mockResolvedValue({ total: 0, grupos: [] }),
+        obtenerPorCobrar: vi.fn().mockResolvedValue(500000),
+        listarCuotasPorCobrar: vi.fn().mockResolvedValue([cuotaVencida]),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      expect(await screen.findByRole('button', { name: /cuotas por cobrar.*1 vencida/i })).toBeInTheDocument();
+    });
+  });
+
   describe('Pendientes de asignar en la pantalla principal', () => {
     const authDesbloqueado = () => ({
       isDeviceLinked: vi.fn().mockReturnValue(true),
