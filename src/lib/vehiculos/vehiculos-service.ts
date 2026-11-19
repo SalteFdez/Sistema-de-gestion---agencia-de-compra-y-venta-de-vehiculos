@@ -12,6 +12,8 @@ export interface VehiculoItem {
   modelo: string;
   anio: number;
   color: string | null;
+  /** Para la búsqueda del listado */
+  patente?: string | null;
   estado: 'en_stock' | 'reservado' | 'vendido';
   fotoUrl: string | null;
   fechaIngreso: string;
@@ -1605,6 +1607,7 @@ export class VehiculosService {
       estado: f.estado as VehiculoItem['estado'],
       fotoUrl: f.foto_url ? (urlPorRuta.get(f.foto_url) ?? null) : null,
       fechaIngreso: String(f.fecha_ingreso),
+      patente: (f.patente as string | null) ?? null,
     }));
   }
 

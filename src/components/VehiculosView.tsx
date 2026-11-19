@@ -7,6 +7,7 @@ import type {
 } from '../lib/vehiculos/vehiculos-service';
 import { comprimirFotoEnNavegador } from '../lib/vehiculos/comprimir-foto';
 import { CargarStockForm } from './CargarStockForm';
+import { coincideBusqueda } from '../lib/vehiculos/busqueda';
 
 export interface VehiculosViewProps {
   vehiculos: VehiculoItem[];
@@ -20,6 +21,9 @@ export interface VehiculosViewProps {
   /** Filtro por estado; si lo maneja quien navega, se pasa así sobrevive al detalle */
   filtro?: FiltroEstado;
   onCambiarFiltro?: (filtro: FiltroEstado) => void;
+  /** Texto buscado; si lo maneja quien navega, se pasa así sobrevive al detalle */
+  busqueda?: string;
+  onCambiarBusqueda?: (texto: string) => void;
 }
 
 export type FiltroEstado = 'stock' | 'vendidos' | 'todos';
@@ -41,6 +45,8 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
   onAbrirDetalle,
   filtro,
   onCambiarFiltro,
+  busqueda,
+  onCambiarBusqueda,
 }) => {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [filtroInterno, setFiltroInterno] = useState<FiltroEstado>('stock');
@@ -49,13 +55,23 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
     setFiltroInterno(f);
     onCambiarFiltro?.(f);
   };
+  // Texto buscado: si lo maneja quien navega, sobrevive al detalle
+  const [busquedaInterna, setBusquedaInterna] = useState<string>('');
+  const busquedaActual = busqueda ?? busquedaInterna;
+  const setBusqueda = (texto: string) => {
+    setBusquedaInterna(texto);
+    onCambiarBusqueda?.(texto);
+  };
 
   // En stock incluye "reservado" (sigue sin vender); Vendidos solo "vendido"
-  const visibles = vehiculos.filter((v) => {
+  const porEstado = vehiculos.filter((v) => {
     if (filtroEstado === 'todos') return true;
     if (filtroEstado === 'vendidos') return v.estado === 'vendido';
     return v.estado === 'en_stock' || v.estado === 'reservado';
   });
+  // La búsqueda se aplica sobre lo que deja el filtro de estado
+  const visibles = porEstado.filter((v) => coincideBusqueda(v, busquedaActual));
+  const etiquetaFiltro = filtroEstado === 'stock' ? 'En stock' : filtroEstado === 'vendidos' ? 'Vendidos' : 'Todos';
   // Fotos agregadas desde el listado, por id de vehículo (se muestran sin recargar la lista)
   const [fotosNuevas, setFotosNuevas] = useState<Record<string, string>>({});
   const [erroresFoto, setErroresFoto] = useState<Record<string, string>>({});
@@ -122,6 +138,29 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
         </div>
       )}
 
+      <div className="relative mb-3">
+        <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">⌕</span>
+        <input
+          type="search"
+          role="searchbox"
+          aria-label="Buscar vehículos"
+          placeholder="Buscar por código, marca, modelo o patente"
+          value={busquedaActual}
+          onChange={(e) => setBusqueda(e.target.value)}
+          className="w-full border border-gray-300 rounded-xl pl-9 pr-9 py-2.5 text-sm bg-white"
+        />
+        {busquedaActual !== '' && (
+          <button
+            type="button"
+            aria-label="Borrar búsqueda"
+            onClick={() => setBusqueda('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 px-2"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-3 gap-2 mb-4" role="group" aria-label="Filtrar por estado">
         {(['En stock', 'Vendidos', 'Todos'] as const).map((etiqueta) => {
           const valor = etiqueta === 'En stock' ? 'stock' : etiqueta === 'Vendidos' ? 'vendidos' : 'todos';
@@ -143,13 +182,26 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
       </div>
 
       {visibles.length === 0 && (
-        <p className="text-sm text-gray-600 bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center mb-4">
-          {filtroEstado === 'vendidos'
-            ? 'No hay vehículos vendidos todavía'
-            : filtroEstado === 'stock'
-              ? 'No hay vehículos en stock'
-              : 'No hay vehículos cargados todavía'}
-        </p>
+        <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center mb-4">
+          <p className="text-sm text-gray-600">
+            {busquedaActual.trim() !== ''
+              ? `No hay vehículos que coincidan con '${busquedaActual.trim()}' en ${etiquetaFiltro}`
+              : filtroEstado === 'vendidos'
+                ? 'No hay vehículos vendidos todavía'
+                : filtroEstado === 'stock'
+                  ? 'No hay vehículos en stock'
+                  : 'No hay vehículos cargados todavía'}
+          </p>
+          {busquedaActual.trim() !== '' && filtroEstado !== 'todos' && vehiculos.some((v) => coincideBusqueda(v, busquedaActual)) && (
+            <button
+              type="button"
+              onClick={() => setFiltroEstado('todos')}
+              className="mt-3 py-2 px-4 bg-white border border-gray-300 text-sm font-medium text-gray-800 rounded-lg"
+            >
+              Buscar en Todos
+            </button>
+          )}
+        </div>
       )}
 
       <div className="space-y-3">

@@ -1002,6 +1002,27 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('listarVehiculos: patente para buscar', () => {
+    it('cada vehículo del listado trae su patente (null si no tiene)', async () => {
+      const filas = [
+        { id: 'v1', codigo: 'MC-014', marca: 'Chevrolet', modelo: 'Corsa', anio: 2010, color: null, patente: 'AB123CD',
+          estado: 'en_stock', foto_url: null, fecha_ingreso: '2026-11-01', anulado: false },
+        { id: 'v2', codigo: 'MC-007', marca: 'Fiat', modelo: 'Uno', anio: 2012, color: null, patente: null,
+          estado: 'en_stock', foto_url: null, fecha_ingreso: '2026-11-02', anulado: false },
+      ];
+      const consulta: Record<string, unknown> = {
+        order: vi.fn(() => consulta),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: filas, error: null }).then(ok, ko),
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => consulta) });
+
+      const lista = await new VehiculosService(mockDb).listarVehiculos();
+
+      expect(lista.map((v) => v.patente)).toEqual(['AB123CD', null]);
+    });
+  });
+
   describe('listarCuotasPorCobrar', () => {
     const fila = (cuotaId: string, estado: string, vencimiento: string, monto: number, cobrado: number) => ({
       cuota_id: cuotaId, venta_id: 'ven1', numero: 1, monto, fecha_vencimiento: vencimiento,

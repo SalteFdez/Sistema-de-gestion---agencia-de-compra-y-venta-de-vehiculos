@@ -47,7 +47,8 @@ Sistema de gestión interna para una agencia de compra y venta de vehículos usa
 
 ## Etapa 3 — Reportes y pulido
 
-1. **E3-01 · Reportes** — Como socio, quiero ver la ganancia por período y por vehículo, los gastos por categoría y los días en stock, para saber cómo va el negocio. Requiere: E1-06
+1. **E3-01 · Ganancia por período** — Como socio, quiero ver la ganancia de cada mes (ventas menos el costo real de lo vendido, menos gastos generales, más ingresos generales), para saber cómo va el negocio. Requiere: E1-06, E1-07, E1-07b
 2. **E3-02 · Galería de fotos** — Como socio, quiero agregar varias fotos a un vehículo, para no depender de una sola foto para identificarlo. Requiere: E1-03
+3. **E3-03 · Buscar vehículos** — Como socio, quiero buscar en el listado de Vehículos por código, marca, modelo o patente, combinado con el filtro En stock / Vendidos / Todos, para encontrar rápido un auto. Requiere: E1-06b
 
-*Pendientes de definir antes de convertirlos en historias:* "búsqueda y filtros avanzados" y "pulido general de la interfaz" figuran en la Etapa 3 del documento pero sin detalle de qué incluyen.
+*Pulido general: se define después de usar la app unas semanas.*

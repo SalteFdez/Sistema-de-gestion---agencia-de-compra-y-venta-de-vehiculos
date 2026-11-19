@@ -150,6 +150,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   }, [vehiculosService]);
   // Filtro de Vehículos: vive acá para sobrevivir a abrir el detalle y volver
   const [filtroVehiculos, setFiltroVehiculos] = useState<FiltroEstado>('stock');
+  // Búsqueda del listado: vive acá para sobrevivir a abrir el detalle y volver
+  const [busquedaVehiculos, setBusquedaVehiculos] = useState<string>('');
 
   const loadVehiculosData = useCallback(async () => {
     if (!vehiculosService) return;
@@ -803,6 +805,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             vehiculos={vehiculos}
             errorCarga={vehiculosError}
             filtro={filtroVehiculos}
+            busqueda={busquedaVehiculos}
+            onCambiarBusqueda={setBusquedaVehiculos}
             onCambiarFiltro={setFiltroVehiculos}
             onAbrirDetalle={(id) => void abrirDetalle(id)}
             onReintentar={loadVehiculosData}

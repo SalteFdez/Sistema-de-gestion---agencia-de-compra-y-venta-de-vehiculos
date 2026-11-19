@@ -463,6 +463,53 @@ describe('AuthFlow UI Integration', () => {
     });
   });
 
+  describe('Buscar vehículos sobrevive al detalle', () => {
+    it('la búsqueda y el filtro siguen como estaban al entrar a un auto y volver', async () => {
+      mockAuthService = {
+        isDeviceLinked: vi.fn().mockReturnValue(true),
+        getLinkedUser: vi.fn().mockReturnValue({ id: 'u1', email: 'agustin@machoman.local', nombre: 'Agustín Fernandez' }),
+        validatePin: vi.fn().mockResolvedValue(true),
+      };
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      const detalle = {
+        id: 'v14', codigo: 'MC-014', marca: 'Chevrolet', modelo: 'Corsa', anio: 2010, color: null, patente: 'AB123CD',
+        estado: 'en_stock', origen: 'compra', fechaIngreso: '2026-11-01', vendedor: null, valorIngreso: 3000000,
+        gastosAsignados: 0, costoReal: 3000000, pagos: [], venta: null, gastos: [],
+      };
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockResolvedValue([
+          { id: 'v14', codigo: 'MC-014', marca: 'Chevrolet', modelo: 'Corsa', anio: 2010, color: null, patente: 'AB123CD', estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-01' },
+          { id: 'v7', codigo: 'MC-007', marca: 'Fiat', modelo: 'Uno', anio: 2012, color: null, patente: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-02' },
+        ]),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        obtenerDetalle: vi.fn().mockResolvedValue({ success: true, detalle }),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+      const buscador = await screen.findByRole('searchbox', { name: /buscar vehículos/i });
+      fireEvent.change(buscador, { target: { value: 'corsa' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+
+      fireEvent.click(screen.getByText('MC-014'));
+      // El detalle ya cargado muestra "Cómo se pagó"
+      expect(await screen.findByRole('heading', { name: 'Cómo se pagó' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Volver' }));
+
+      const buscadorVuelta = await screen.findByRole('searchbox', { name: /buscar vehículos/i });
+      expect(buscadorVuelta).toHaveValue('corsa');
+      expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
   describe('Cuotas por cobrar en la pantalla principal', () => {
     const authDesbloqueado = () => ({
       isDeviceLinked: vi.fn().mockReturnValue(true),
