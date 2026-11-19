@@ -77,6 +77,15 @@ describe('GaleriaFotos', () => {
     expect(screen.getByRole('button', { name: 'Agregar fotos' })).toBeInTheDocument();
   });
 
+  it('si una acción falla, el error se muestra en la galería, no en una ventana del navegador', () => {
+    const alerta = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    render(<GaleriaFotos {...props()} error="La foto 2 no se subió: sin conexión" />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('La foto 2 no se subió: sin conexión');
+    expect(alerta).not.toHaveBeenCalled();
+    alerta.mockRestore();
+  });
+
   it('un auto anulado muestra sus fotos pero sin acciones', () => {
     render(<GaleriaFotos {...props()} anulado />);
 
@@ -95,5 +104,30 @@ describe('GaleriaFotos', () => {
 
     fireEvent.click(within(visor).getByRole('button', { name: 'Siguiente' }));
     expect(within(visor).getByRole('img')).toHaveAttribute('src', 'https://storage.test/b');
+  });
+
+  it('en el visor, deslizar a la izquierda pasa a la siguiente y a la derecha a la anterior', () => {
+    render(<GaleriaFotos {...props()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver foto grande' }));
+    const visor = screen.getByRole('dialog', { name: 'Fotos del vehículo' });
+
+    fireEvent.touchStart(visor, { touches: [{ clientX: 200 }] });
+    fireEvent.touchEnd(visor, { changedTouches: [{ clientX: 60 }] });
+    expect(within(visor).getByRole('img')).toHaveAttribute('src', 'https://storage.test/b');
+
+    fireEvent.touchStart(visor, { touches: [{ clientX: 60 }] });
+    fireEvent.touchEnd(visor, { changedTouches: [{ clientX: 220 }] });
+    expect(within(visor).getByRole('img')).toHaveAttribute('src', 'https://storage.test/a');
+  });
+
+  it('un movimiento corto del dedo no cambia de foto', () => {
+    render(<GaleriaFotos {...props()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver foto grande' }));
+    const visor = screen.getByRole('dialog', { name: 'Fotos del vehículo' });
+
+    fireEvent.touchStart(visor, { touches: [{ clientX: 200 }] });
+    fireEvent.touchEnd(visor, { changedTouches: [{ clientX: 180 }] });
+
+    expect(within(visor).getByRole('img')).toHaveAttribute('src', 'https://storage.test/a');
   });
 });

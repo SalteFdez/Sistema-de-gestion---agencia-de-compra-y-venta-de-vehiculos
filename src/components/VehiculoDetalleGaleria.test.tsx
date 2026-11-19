@@ -22,6 +22,19 @@ describe('VehiculoDetalleView: galería', () => {
     expect(screen.getByRole('button', { name: 'Foto 2' })).toBeInTheDocument();
   });
 
+  it('un error de la galería se muestra en el detalle, en pantalla', () => {
+    render(
+      <VehiculoDetalleView
+        detalle={detalle}
+        fotoUrl={null}
+        onVolver={vi.fn()}
+        errorFotos="La foto 2 no se subió: sin conexión"
+      />
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('La foto 2 no se subió: sin conexión');
+  });
+
   it('un auto anulado muestra sus fotos sin acciones', () => {
     const anulado: DetalleVehiculo = { ...detalle, anulado: { por: 'Antonio', motivo: 'error', el: '2026-11-14T15:30:00+00:00' } };
     render(<VehiculoDetalleView detalle={anulado} fotoUrl={null} onVolver={vi.fn()} onUsarComoPrincipal={vi.fn()} onQuitarFoto={vi.fn()} onAgregarFotos={vi.fn()} />);

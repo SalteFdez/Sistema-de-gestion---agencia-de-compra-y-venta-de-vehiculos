@@ -5,6 +5,8 @@ export interface GaleriaFotosProps {
   fotos: FotoVehiculo[];
   anulado: boolean;
   progreso?: { hecho: number; total: number };
+  /** Error de la última acción (subida, principal o quitar), para mostrarlo en la galería */
+  error?: string | null;
   onAgregar: (archivos: File[]) => void;
   onUsarComoPrincipal: (fotoId: string) => void;
   onQuitar: (fotoId: string) => void;
@@ -14,6 +16,7 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
   fotos,
   anulado,
   progreso,
+  error,
   onAgregar,
   onUsarComoPrincipal,
   onQuitar,
@@ -22,6 +25,8 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
   const [confirmandoQuitar, setConfirmandoQuitar] = useState<boolean>(false);
   const [indiceVisor, setIndiceVisor] = useState<number | null>(null);
   const entrada = useRef<HTMLInputElement | null>(null);
+  // Posición inicial del dedo al deslizar en el visor
+  const inicioDedo = useRef<number | null>(null);
 
   if (fotos.length === 0) {
     return (
@@ -75,6 +80,12 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
 
       {progreso && (
         <p className="text-sm text-gray-700">{`Subiendo ${progreso.hecho} de ${progreso.total}`}</p>
+      )}
+
+      {error && (
+        <p role="alert" className="mx-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
+          {error}
+        </p>
       )}
 
       <div className="flex gap-2 overflow-x-auto px-3">
@@ -174,6 +185,19 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
           aria-modal="true"
           aria-label="Fotos del vehículo"
           className="fixed inset-0 bg-black/95 flex flex-col items-center justify-center p-4 z-50"
+          onTouchStart={(e) => {
+            inicioDedo.current = e.touches[0]?.clientX ?? null;
+          }}
+          onTouchEnd={(e) => {
+            const inicio = inicioDedo.current;
+            inicioDedo.current = null;
+            const fin = e.changedTouches[0]?.clientX;
+            if (inicio === null || fin === undefined) return;
+            // Un movimiento corto no cambia de foto
+            const UMBRAL = 50;
+            if (fin - inicio <= -UMBRAL) setIndiceVisor((indiceVisor + 1) % fotos.length);
+            if (fin - inicio >= UMBRAL) setIndiceVisor((indiceVisor - 1 + fotos.length) % fotos.length);
+          }}
         >
           <img
             src={fotos[indiceVisor].url ?? undefined}

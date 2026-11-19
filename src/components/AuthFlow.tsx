@@ -85,6 +85,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
 
   // Progreso de la subida de fotos desde el detalle
   const [progresoFotosDetalle, setProgresoFotosDetalle] = useState<{ hecho: number; total: number } | undefined>(undefined);
+  // Error de la última acción sobre fotos, mostrado en la galería (no en una ventana del navegador)
+  const [errorFotosDetalle, setErrorFotosDetalle] = useState<string | null>(null);
   // Cobros de cuotas ya hechos de la venta del detalle (salen de las cuentas si se anula)
   const [cobrosCuotasVenta, setCobrosCuotasVenta] = useState<{ cantidad: number; total: number } | undefined>(undefined);
   const [vistaPreviaVenta, setVistaPreviaVenta] = useState<Array<{ id: string; codigo: string; gastosQueSeAnulan?: { cantidad: number; total: number } }> | undefined>(undefined);
@@ -790,8 +792,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             vistaPrevia={vistaPreviaDetalle}
             vistaPreviaVenta={vistaPreviaVenta}
             progresoFotos={progresoFotosDetalle}
+            errorFotos={errorFotosDetalle}
             onAgregarFotos={async (archivos) => {
               if (!vehiculosService || !detalleVehiculo) return;
+              setErrorFotosDetalle(null);
               const vigentes = (detalleVehiculo.fotos ?? []).length;
               const comprimidas: Blob[] = [];
               for (const archivo of archivos) {
@@ -802,20 +806,24 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               );
               setProgresoFotosDetalle(undefined);
               if (!res.success) {
-                window.alert(res.error ?? res.fallidas.map((f) => `La foto ${f.numero} no se subió: ${f.error}`).join('\n'));
+                setErrorFotosDetalle(
+                  res.error ?? res.fallidas.map((f) => `La foto ${f.numero} no se subió: ${f.error}`).join(' · ')
+                );
               }
               await Promise.all([abrirDetalle(detalleVehiculo.id), loadVehiculosData()]);
             }}
             onUsarComoPrincipal={async (fotoId) => {
               if (!vehiculosService || !detalleVehiculo) return;
+              setErrorFotosDetalle(null);
               const res = await vehiculosService.usarComoPrincipal(fotoId);
-              if (!res.success) window.alert(res.error ?? 'No se cambió nada.');
+              if (!res.success) setErrorFotosDetalle(res.error ?? 'No se cambió nada.');
               await Promise.all([abrirDetalle(detalleVehiculo.id), loadVehiculosData()]);
             }}
             onQuitarFoto={async (fotoId) => {
               if (!vehiculosService || !detalleVehiculo) return;
+              setErrorFotosDetalle(null);
               const res = await vehiculosService.quitarFoto(fotoId);
-              if (!res.success) window.alert(res.error ?? 'No se quitó nada.');
+              if (!res.success) setErrorFotosDetalle(res.error ?? 'No se quitó nada.');
               await Promise.all([abrirDetalle(detalleVehiculo.id), loadVehiculosData()]);
             }}
             cobrosCuotas={cobrosCuotasVenta}

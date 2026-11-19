@@ -19,6 +19,8 @@ export interface VehiculoDetalleViewProps {
   onUsarComoPrincipal?: (fotoId: string) => void;
   onQuitarFoto?: (fotoId: string) => void;
   progresoFotos?: { hecho: number; total: number };
+  /** Error de la última acción sobre fotos, mostrado en la galería */
+  errorFotos?: string | null;
   /** Cobros de cuotas ya hechos de esta venta: salen de las cuentas si se anula la venta */
   cobrosCuotas?: { cantidad: number; total: number };
   /** Autos recibidos de la venta con lo que se anula con cada uno (para el aviso de anular la venta) */
@@ -73,6 +75,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   onUsarComoPrincipal,
   onQuitarFoto,
   progresoFotos,
+  errorFotos,
 }) => {
   const [aAnular, setAAnular] = useState<'vehiculo' | 'venta' | null>(null);
   const [motivo, setMotivo] = useState<string>('');
@@ -177,6 +180,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             fotos={detalle.fotos}
             anulado={!!detalle.anulado}
             progreso={progresoFotos}
+            error={errorFotos}
             onAgregar={(archivos) => onAgregarFotos?.(archivos)}
             onUsarComoPrincipal={(id) => onUsarComoPrincipal?.(id)}
             onQuitar={(id) => onQuitarFoto?.(id)}
