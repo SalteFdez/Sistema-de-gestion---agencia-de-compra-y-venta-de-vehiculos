@@ -1,4 +1,9 @@
 import { formatMoney } from '../format/money';
+import { validarFinanciacion } from './financiacion';
+
+// Hoy en Buenos Aires, AAAA-MM-DD
+const hoyBuenosAires = (): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
 
 export interface VehiculoItem {
   id: string;
@@ -253,6 +258,9 @@ export interface RegistrarVentaConPermutasParams {
   comprador?: string;
   cobros: CobroVenta[];
   permutas: PermutaParams[];
+  compradorTelefono?: string;
+  /** Parte del precio que queda financiada en cuotas (sin interés) */
+  financiacion?: { monto: number; cantidadCuotas: number; fechaPrimera: string };
 }
 
 export interface RegistrarVentaConPermutasResult {
@@ -384,6 +392,15 @@ export interface VentaDetalle {
   cobros: PagoDetalle[];
   /** Autos recibidos en parte de pago en esta venta */
   permutas?: Array<{ vehiculoId: string; codigo: string; marca: string; modelo: string; valorPactado: number }>;
+  /** Parte financiada en cuotas, si la venta la tiene */
+  financiacion?: {
+    monto: number;
+    cantidadCuotas: number;
+    fechaPrimera: string;
+    /** Lo que queda por cobrar (sin cuotas cobradas todavía) */
+    faltaCobrar: number;
+    cuotas: Array<{ numero: number; monto: number; fechaVencimiento: string; estado: string }>;
+  };
 }
 
 export interface GastoDetalle {
@@ -845,7 +862,20 @@ export class VehiculosService {
     }
     const sumaCobros = params.cobros.reduce((acc, c) => acc + c.monto, 0);
     const total = sumaCobros + sumaPermutas;
-    if (total !== params.precio) {
+    if (params.financiacion) {
+      const motivo = validarFinanciacion({
+        precio: params.precio,
+        permutas: sumaPermutas,
+        cobros: sumaCobros,
+        financiado: params.financiacion.monto,
+        cantidadCuotas: params.financiacion.cantidadCuotas,
+        fechaPrimera: params.financiacion.fechaPrimera,
+        hoy: hoyBuenosAires(),
+      });
+      if (motivo) {
+        return { success: false, error: motivo };
+      }
+    } else if (total !== params.precio) {
       const detalle =
         total < params.precio ? `Faltan ${formatMoney(params.precio - total)}` : `Sobran ${formatMoney(total - params.precio)}`;
       return { success: false, error: `Precio, cobros y permutas no cierran. ${detalle}` };
@@ -859,6 +889,14 @@ export class VehiculosService {
         p_precio: params.precio,
         p_comprador: params.comprador?.trim() || null,
         p_cobros: params.cobros.map((c) => ({ cuenta_id: c.cuentaId, monto: c.monto })),
+        p_comprador_telefono: params.compradorTelefono?.trim() || null,
+        p_financiacion: params.financiacion
+          ? {
+              monto: params.financiacion.monto,
+              cantidad_cuotas: params.financiacion.cantidadCuotas,
+              fecha_primera: params.financiacion.fechaPrimera,
+            }
+          : null,
         p_permutas: params.permutas.map((p) => ({
           marca: p.marca.trim(),
           modelo: p.modelo.trim(),
@@ -904,6 +942,16 @@ export class VehiculosService {
       permutas: recibidos,
       avisosFoto,
     };
+  }
+
+  /** Lo que queda por cobrar de las ventas financiadas (no es dinero disponible). */
+  async obtenerPorCobrar(): Promise<number> {
+    const { data, error } = await this.db.from('v_por_cobrar').select('total');
+    if (error) {
+      throw new Error(error.message);
+    }
+    const fila = (Array.isArray(data) ? data[0] : null) as { total: number | string } | null;
+    return Number(fila?.total) || 0;
   }
 
   /** Autos recibidos en la venta, con lo que se anula con cada uno (gastos y partes). */
@@ -1269,6 +1317,7 @@ export class VehiculosService {
     // Venta: solo si el vehículo está vendido (la venta no anulada y sus cobros)
     let venta: VentaDetalle | null = null;
     let permutasVenta: NonNullable<VentaDetalle['permutas']> = [];
+    let financiacionVenta: VentaDetalle['financiacion'] | undefined;
 
     // Si entró por permuta, de qué venta salió
     let permutaDeVenta: string | null = null;
@@ -1330,10 +1379,45 @@ export class VehiculosService {
             valorPactado: Number(r.valor_pactado) || 0,
           };
         });
+        const { data: filaFin, error: errorFin } = await this.db
+          .from('financiaciones')
+          .select('id, monto_total, cantidad_cuotas, fecha_primera')
+          .eq('venta_id', v.id)
+          .maybeSingle();
+        if (errorFin) {
+          return { success: false, error: errorFin.message };
+        }
+        if (filaFin) {
+          const f = filaFin as { id: string; monto_total: number | string; cantidad_cuotas: number | string; fecha_primera: string };
+          const { data: filasCuotas, error: errorCuotas } = await this.db
+            .from('cuotas')
+            .select('numero, monto, fecha_vencimiento')
+            .eq('financiacion_id', f.id)
+            .order('numero', { ascending: true });
+          if (errorCuotas) {
+            return { success: false, error: errorCuotas.message };
+          }
+          const cuotasFila = (Array.isArray(filasCuotas) ? filasCuotas : []) as Array<{
+            numero: number; monto: number | string; fecha_vencimiento: string;
+          }>;
+          financiacionVenta = {
+            monto: Number(f.monto_total) || 0,
+            cantidadCuotas: Number(f.cantidad_cuotas) || 0,
+            fechaPrimera: String(f.fecha_primera),
+            faltaCobrar: Number(f.monto_total) || 0,
+            cuotas: cuotasFila.map((c) => ({
+              numero: Number(c.numero),
+              monto: Number(c.monto) || 0,
+              fechaVencimiento: String(c.fecha_vencimiento),
+              estado: 'pendiente',
+            })),
+          };
+        }
         const cobros = (filasCobro ?? []) as Array<{ monto: number | string; cuenta: { nombre: string } | null }>;
         venta = {
           ventaId: v.id,
           ...(permutasVenta.length > 0 ? { permutas: permutasVenta } : {}),
+          ...(financiacionVenta ? { financiacion: financiacionVenta } : {}),
           fecha: v.fecha,
           comprador: v.comprador_texto ?? null,
           precioVenta: Number(v.precio_total) || 0,

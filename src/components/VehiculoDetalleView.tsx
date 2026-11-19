@@ -71,6 +71,13 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
       const lineasVenta = [
         `Vas a anular la venta de ${detalle.codigo} por ${formatMoney(detalle.venta.precioVenta)}; salen ${cobros}`,
       ];
+      // Venta financiada: las cuotas dejan de contar, y lo que quedaba por cobrar se anula con ellas
+      const fin = detalle.venta.financiacion;
+      if (fin) {
+        lineasVenta.push(
+          `Se anulan ${fin.cuotas.length} cuotas por ${formatMoney(fin.faltaCobrar)} por cobrar`
+        );
+      }
       // Autos recibidos en parte de pago: se anulan con la venta, y sus gastos si los tienen
       const recibidos = vistaPreviaVenta ?? [];
       if (recibidos.length > 0) {
@@ -325,6 +332,22 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
                 </li>
               ))}
             </ul>
+          )}
+
+          {detalle.venta.financiacion && (
+            <div className="mt-3 space-y-1">
+              <p className="text-sm font-semibold text-gray-800">
+                {`Financiación ${formatMoney(detalle.venta.financiacion.monto)} en ${detalle.venta.financiacion.cantidadCuotas} cuotas`}
+              </p>
+              <ul aria-label="Cuotas financiadas" className="text-sm text-gray-800 space-y-1">
+                {detalle.venta.financiacion.cuotas.map((c) => (
+                  <li key={c.numero}>
+                    {`${c.numero} · ${formatoFecha(c.fechaVencimiento)} · ${formatMoney(c.monto)} · ${c.estado === 'pendiente' ? 'Pendiente' : c.estado}`}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-sm font-semibold text-amber-700">{`Falta cobrar ${formatMoney(detalle.venta.financiacion.faltaCobrar)}`}</p>
+            </div>
           )}
 
           {detalle.venta.ganancia < 0 ? (

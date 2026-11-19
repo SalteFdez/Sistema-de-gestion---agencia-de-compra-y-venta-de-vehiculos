@@ -150,6 +150,19 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     }
   }, [vehiculosService]);
 
+  // Lo que queda por cobrar de las ventas financiadas (Balances)
+  const [porCobrar, setPorCobrar] = useState<number>(0);
+  const [errorPorCobrar, setErrorPorCobrar] = useState<boolean>(false);
+  const loadPorCobrar = useCallback(async () => {
+    if (!vehiculosService) return;
+    try {
+      setPorCobrar(await vehiculosService.obtenerPorCobrar());
+      setErrorPorCobrar(false);
+    } catch {
+      setErrorPorCobrar(true);
+    }
+  }, [vehiculosService]);
+
   // Gastos pendientes de asignar: el botón de la pantalla principal muestra su total
   const [pendientes, setPendientes] = useState<PendientesResult>({ grupos: [], total: 0 });
   const [gastoAsignar, setGastoAsignar] = useState<PendienteAsignar | null>(null);
@@ -224,8 +237,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     if (isUnlocked) {
       loadCuentasData();
       void loadPendientes();
+      void loadPorCobrar();
     }
-  }, [isUnlocked, loadCuentasData, loadPendientes]);
+  }, [isUnlocked, loadCuentasData, loadPendientes, loadPorCobrar]);
 
   // Manejador de inactividad: escuchar interacción y visibilidad
   const handleUserActivity = useCallback(() => {
@@ -754,6 +768,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <BalancesView
+            porCobrar={porCobrar}
+            errorPorCobrar={errorPorCobrar}
             totalDisponible={totalDisponible}
             cuentas={cuentas}
             inventario={inventario}

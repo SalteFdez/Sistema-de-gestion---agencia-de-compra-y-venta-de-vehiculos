@@ -7,6 +7,8 @@ import type {
 import type { CuentaItem } from '../lib/cuentas/cuentas-service';
 import { formatMoney, parseMoneyInput } from '../lib/format/money';
 import { RepartoCuentas, type FilaReparto } from './RepartoCuentas';
+import { dividirCuotas } from '../lib/vehiculos/cuotas';
+import { validarFinanciacion, hoyBuenosAires } from '../lib/vehiculos/financiacion';
 
 export interface VenderVehiculoViewProps {
   vehiculos: VehiculoItem[];
@@ -25,6 +27,8 @@ interface Confirmacion {
   /** Autos recibidos en parte de pago, en el orden en que se cargaron */
   permutasCodigos: string[];
   permutasTotal: number;
+  /** Línea de financiación del resumen, si la venta la tiene */
+  financiacionTexto?: string;
 }
 
 /** Un auto recibido en parte de pago, tal como se carga en pantalla */
@@ -50,6 +54,15 @@ const permutaVacia = (key: number): PermutaForm => ({
   foto: null,
 });
 
+// "2026-11-14" -> "14/11/2026"
+const formatoFecha = (iso: string): string => {
+  const [anio, mes, dia] = iso.split('-');
+  return `${dia}/${mes}/${anio}`;
+};
+
+// Un mes después de hoy, como valor por defecto de la primera cuota
+const fechaPorDefecto = (): string => dividirCuotas({ monto: 2, cantidad: 2, fechaPrimera: hoyBuenosAires() })[1].fechaVencimiento;
+
 export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   vehiculos,
   cuentas,
@@ -66,6 +79,12 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   const [recibe, setRecibe] = useState<boolean>(false);
   const [permutas, setPermutas] = useState<PermutaForm[]>([]);
   const [siguienteKey, setSiguienteKey] = useState<number>(1);
+  // "¿Hay financiación?": No por defecto
+  const [financia, setFinancia] = useState<boolean>(false);
+  const [montoFinanciado, setMontoFinanciado] = useState<string>('');
+  const [cantidadCuotasTxt, setCantidadCuotasTxt] = useState<string>('');
+  const [fechaPrimera, setFechaPrimera] = useState<string>(() => fechaPorDefecto());
+  const [telefonoComprador, setTelefonoComprador] = useState<string>('');
 
   // Solo se pueden vender los vehículos en stock
   const enStock = vehiculos.filter((v) => v.estado === 'en_stock');
@@ -73,8 +92,10 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   const precioNumero = parseMoneyInput(precio);
   const permutasActivas = recibe ? permutas : [];
   const sumaPermutas = permutasActivas.reduce((acc, p) => acc + parseMoneyInput(p.valor), 0);
-  // Lo que falta en plata: precio − Σ permutas
-  const objetivoCobros = precioNumero - sumaPermutas;
+  const financiadoNumero = financia ? parseMoneyInput(montoFinanciado) : 0;
+  const cuotasNumero = financia ? parseInt(cantidadCuotasTxt, 10) || 0 : 0;
+  // Lo que falta en plata: precio − Σ permutas − financiado
+  const objetivoCobros = precioNumero - sumaPermutas - financiadoNumero;
 
   const suma = cobros.reduce((acc, c) => acc + parseMoneyInput(c.monto), 0);
   const cobrosValidos =
@@ -88,14 +109,38 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
       parseMoneyInput(p.anio) > 0 &&
       parseMoneyInput(p.valor) > 0
   );
-  // Sin cobros cuando las permutas cubren todo el precio
+  // Sin cobros cuando permutas y financiado cubren todo el precio
   const cobrosOk = objetivoCobros === 0 ? true : cobrosValidos && suma === objetivoCobros;
+
+  const financiacionError = financia
+    ? validarFinanciacion({
+        precio: precioNumero,
+        permutas: sumaPermutas,
+        cobros: suma,
+        financiado: financiadoNumero,
+        cantidadCuotas: cuotasNumero,
+        fechaPrimera,
+        hoy: hoyBuenosAires(),
+      })
+    : null;
+
+  // Vista previa de las cuotas, con la misma regla que la RPC
+  let cuotasPreview: ReturnType<typeof dividirCuotas> = [];
+  if (financia && financiadoNumero > 0 && cuotasNumero >= 1 && fechaPrimera) {
+    try {
+      cuotasPreview = dividirCuotas({ monto: financiadoNumero, cantidad: cuotasNumero, fechaPrimera });
+    } catch {
+      cuotasPreview = [];
+    }
+  }
+
   const puedeConfirmar =
     elegido !== null &&
     precioNumero > 0 &&
     permutasValidas &&
     sumaPermutas <= precioNumero &&
-    cobrosOk;
+    cobrosOk &&
+    (!financia || financiacionError === null);
 
   const agregarPermuta = () => {
     setPermutas((prev) => [...prev, permutaVacia(siguienteKey)]);
@@ -132,6 +177,10 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
         valorPactado: parseMoneyInput(p.valor),
         foto: p.foto ?? undefined,
       })),
+      compradorTelefono: financia ? telefonoComprador : undefined,
+      financiacion: financia
+        ? { monto: financiadoNumero, cantidadCuotas: cuotasNumero, fechaPrimera }
+        : undefined,
     });
     if (res.success && res.codigo) {
       setErrorVenta(null);
@@ -139,6 +188,14 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
         const nombre = cuentas.find((k) => k.id === c.cuentaId)?.nombre ?? '';
         return `${formatMoney(parseMoneyInput(c.monto))} en ${nombre}`;
       });
+      let financiacionTexto: string | undefined;
+      if (financia && cuotasPreview.length > 0) {
+        const primera = cuotasPreview[0];
+        const [, mes, dia] = fechaPrimera.split('-');
+        financiacionTexto =
+          `Queda por cobrar ${formatMoney(financiadoNumero)} en ${cuotasNumero} cuotas de ${formatMoney(primera.monto)}` +
+          ` (primera el ${dia}/${mes})`;
+      }
       setConfirmacion({
         codigo: res.codigo,
         precio: precioNumero,
@@ -147,6 +204,7 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
         cobrado: suma,
         permutasCodigos: (res.permutas ?? []).map((p) => p.codigo),
         permutasTotal: sumaPermutas,
+        financiacionTexto,
       });
     } else {
       // Nada quedó guardado: los datos siguen en pantalla para reintentar
@@ -176,6 +234,9 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
               </>
             )}
           </p>
+          {confirmacion.financiacionTexto && (
+            <p className="text-sm text-gray-700 mt-2">{confirmacion.financiacionTexto}</p>
+          )}
           <p
             className={`text-lg font-bold mt-2 ${confirmacion.ganancia < 0 ? 'text-red-600' : 'text-green-700'}`}
           >
@@ -339,18 +400,91 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
             </div>
           )}
 
-          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-            {recibe ? 'Lo que falta, ¿en qué cuentas entró?' : '¿En qué cuentas entró la plata?'}
-          </h3>
-          <RepartoCuentas cuentas={cuentas} precio={objetivoCobros} onChange={setCobros} />
+          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">¿Hay financiación?</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { si: false, etiqueta: 'No' },
+              { si: true, etiqueta: 'Sí' },
+            ].map((op) => (
+              <button
+                key={op.etiqueta}
+                type="button"
+                aria-label={`Financiación: ${op.etiqueta}`}
+                aria-pressed={financia === op.si}
+                onClick={() => setFinancia(op.si)}
+                className={`py-2.5 text-sm font-medium rounded-xl border ${
+                  financia === op.si ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                }`}
+              >
+                {op.etiqueta}
+              </button>
+            ))}
+          </div>
 
-          {recibe && precioNumero > 0 && (
+          {financia && (
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="fin-monto" className="block text-xs text-gray-700 mb-1">Monto financiado ($)</label>
+                <input id="fin-monto" aria-label="Monto financiado ($)" type="text" inputMode="numeric" value={montoFinanciado}
+                  onChange={(e) => setMontoFinanciado(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <span className="block text-xs text-gray-700 mb-1">Cantidad de cuotas</span>
+                <div className="flex gap-2">
+                  {[3, 6, 12].map((n) => (
+                    <button key={n} type="button" aria-label={`Cuotas ${n}`}
+                      onClick={() => setCantidadCuotasTxt(String(n))}
+                      className={`flex-1 py-1.5 text-sm rounded-lg border ${cantidadCuotasTxt === String(n) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}>
+                      {n}
+                    </button>
+                  ))}
+                  <input aria-label="Cantidad de cuotas" type="text" inputMode="numeric" value={cantidadCuotasTxt}
+                    onChange={(e) => setCantidadCuotasTxt(e.target.value.replace(/\D/g, ''))}
+                    className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="fin-fecha" className="block text-xs text-gray-700 mb-1">Fecha de la primera cuota</label>
+                <input id="fin-fecha" aria-label="Fecha de la primera cuota" type="date" value={fechaPrimera}
+                  onChange={(e) => setFechaPrimera(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label htmlFor="fin-telefono" className="block text-xs text-gray-700 mb-1">Teléfono del comprador (opcional)</label>
+                <input id="fin-telefono" aria-label="Teléfono del comprador (opcional)" type="text" value={telefonoComprador}
+                  onChange={(e) => setTelefonoComprador(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              {cuotasPreview.length > 0 && (
+                <ul aria-label="Cuotas" className="text-sm text-gray-800 space-y-1">
+                  {cuotasPreview.map((c) => (
+                    <li key={c.numero}>
+                      {`${c.numero} · ${formatoFecha(c.fechaVencimiento)} · ${formatMoney(c.monto)}`}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {financiacionError && (
+                <p className="text-sm text-amber-700">{financiacionError}</p>
+              )}
+            </div>
+          )}
+
+          {(recibe || financia) && precioNumero > 0 && (
             <p className="text-sm text-gray-800">
-              Precio {formatMoney(precioNumero)} = permutas {formatMoney(sumaPermutas)} + cobrado {formatMoney(suma)}
-              {precioNumero - sumaPermutas - suma !== 0 &&
-                ` · ${precioNumero - sumaPermutas - suma > 0 ? 'Faltan' : 'Sobran'} ${formatMoney(Math.abs(precioNumero - sumaPermutas - suma))}`}
+              {`Precio ${formatMoney(precioNumero)} = permutas ${formatMoney(sumaPermutas)}`}
+              {financia ? ` + financiado ${formatMoney(financiadoNumero)}` : ''}
+              {` + cobrado ${formatMoney(suma)}`}
+              {precioNumero - sumaPermutas - financiadoNumero - suma !== 0 &&
+                ` · ${precioNumero - sumaPermutas - financiadoNumero - suma > 0 ? 'Faltan' : 'Sobran'} ${formatMoney(Math.abs(precioNumero - sumaPermutas - financiadoNumero - suma))}`}
             </p>
           )}
+
+          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+            {recibe || financia ? 'Lo que falta, ¿en qué cuentas entró?' : '¿En qué cuentas entró la plata?'}
+          </h3>
+          <RepartoCuentas cuentas={cuentas} precio={objetivoCobros} onChange={setCobros} />
 
           {errorVenta && (
             <p role="alert" className="text-sm text-red-700">

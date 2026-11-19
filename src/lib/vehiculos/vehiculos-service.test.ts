@@ -840,6 +840,128 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('registrarVentaConPermutas: financiación', () => {
+    const permuta = { marca: 'Honda', modelo: '110cc', anio: 2015, valorPactado: 1000000 };
+
+    it('una financiación que no cierra no llama a la RPC y dice cuánto falta', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVentaConPermutas({
+        vehiculoId: 'v14', precio: 5000000, cobros: [{ cuentaId: 'c1', monto: 1500000 }], permutas: [permuta],
+        financiacion: { monto: 2000000, cantidadCuotas: 4, fechaPrimera: '2030-01-15' },
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/faltan \$ 500\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('con financiación válida manda la financiación y el teléfono a la RPC', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { venta_id: 'ven1', codigo: 'MC-014', ganancia: 0, permutas: [] }, error: null });
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVentaConPermutas({
+        vehiculoId: 'v14', precio: 5000000, comprador: 'Pedro', compradorTelefono: ' 1155 ',
+        cobros: [{ cuentaId: 'c1', monto: 2000000 }], permutas: [permuta],
+        financiacion: { monto: 2000000, cantidadCuotas: 4, fechaPrimera: '2030-01-15' },
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_venta', expect.objectContaining({
+        p_financiacion: { monto: 2000000, cantidad_cuotas: 4, fecha_primera: '2030-01-15' },
+        p_comprador_telefono: '1155',
+      }));
+    });
+
+    it('sin financiación manda null en p_financiacion', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { venta_id: 'ven1', codigo: 'MC-014', ganancia: 0, permutas: [] }, error: null });
+      const service = new VehiculosService(mockDb);
+      await service.registrarVentaConPermutas({
+        vehiculoId: 'v14', precio: 1000000, cobros: [{ cuentaId: 'c1', monto: 1000000 }], permutas: [],
+      });
+
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_venta', expect.objectContaining({ p_financiacion: null }));
+    });
+  });
+
+  describe('obtenerDetalle: financiación', () => {
+    it('una venta financiada trae su financiación con las cuotas pendientes y lo que falta cobrar', async () => {
+      const builder = (filas: Array<Record<string, unknown>>): Record<string, unknown> => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn((col: string, val: unknown) => builder(filas.filter((f) => f[col] === val))),
+          order: vi.fn(() => builder(filas)),
+          maybeSingle: vi.fn(() => Promise.resolve({ data: filas[0] ?? null, error: null })),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: filas, error: null }).then(ok, ko),
+        };
+        return b;
+      };
+      const tablas: Record<string, Array<Record<string, unknown>>> = {
+        vehiculos: [
+          { id: 'v14', codigo: 'MC-014', marca: 'Peugeot', modelo: '208', anio: 2018, color: null, patente: null,
+            estado: 'vendido', origen: 'compra', fecha_ingreso: '2026-11-01', vendedor_texto: null, valor_ingreso: 4000000 },
+        ],
+        v_costo_vehiculo: [{ vehiculo_id: 'v14', valor_ingreso: 4000000, gastos_asignados: 0, costo_real: 4000000 }],
+        movimientos: [],
+        asignaciones_gasto: [],
+        ventas: [
+          { id: 'ven1', vehiculo_id: 'v14', comprador_texto: 'Pedro', fecha: '2026-11-18', precio_total: 5000000, anulada: false },
+        ],
+        v_ganancia_venta: [{ venta_id: 'ven1', ganancia: 1000000 }],
+        venta_permutas: [],
+        financiaciones: [
+          { id: 'f1', venta_id: 'ven1', monto_total: 2000000, cantidad_cuotas: 4, fecha_primera: '2026-12-15' },
+        ],
+        cuotas: [
+          { financiacion_id: 'f1', numero: 1, monto: 500000, fecha_vencimiento: '2026-12-15' },
+          { financiacion_id: 'f1', numero: 2, monto: 500000, fecha_vencimiento: '2027-01-15' },
+          { financiacion_id: 'f1', numero: 3, monto: 500000, fecha_vencimiento: '2027-02-15' },
+          { financiacion_id: 'f1', numero: 4, monto: 500000, fecha_vencimiento: '2027-03-15' },
+        ],
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => ({ select: vi.fn(() => builder(tablas[tabla] ?? [])) }));
+
+      const res = await new VehiculosService(mockDb).obtenerDetalle('v14');
+      const fin = res.detalle?.venta?.financiacion;
+
+      expect(fin?.monto).toBe(2000000);
+      expect(fin?.cantidadCuotas).toBe(4);
+      expect(fin?.fechaPrimera).toBe('2026-12-15');
+      expect(fin?.faltaCobrar).toBe(2000000);
+      expect(fin?.cuotas.map((c) => [c.numero, c.monto, c.estado])).toEqual([
+        [1, 500000, 'pendiente'],
+        [2, 500000, 'pendiente'],
+        [3, 500000, 'pendiente'],
+        [4, 500000, 'pendiente'],
+      ]);
+    });
+  });
+
+  describe('obtenerPorCobrar', () => {
+    it('devuelve el total que queda por cobrar de la vista v_por_cobrar', async () => {
+      mockDb.from = vi.fn().mockReturnValue({
+        select: vi.fn(() => ({
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: [{ total: 2000000 }], error: null }).then(ok, ko),
+        })),
+      });
+
+      const total = await new VehiculosService(mockDb).obtenerPorCobrar();
+
+      expect(mockDb.from).toHaveBeenCalledWith('v_por_cobrar');
+      expect(total).toBe(2000000);
+    });
+
+    it('si la lectura falla, lanza el error para que la pantalla avise', async () => {
+      mockDb.from = vi.fn().mockReturnValue({
+        select: vi.fn(() => ({
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { message: 'Failed to fetch' } }).then(ok, ko),
+        })),
+      });
+
+      await expect(new VehiculosService(mockDb).obtenerPorCobrar()).rejects.toThrow(/failed to fetch/i);
+    });
+  });
+
   describe('vistaPreviaAnularVenta', () => {
     it('lista todos los autos recibidos de la venta con sus gastos', async () => {
       const filas = [
@@ -2466,6 +2588,10 @@ describe('VehiculosService', () => {
         }
         if (tabla === 'v_ganancia_venta') {
           return { select: vi.fn().mockReturnValue(consulta({ data: { ganancia: 1500000 }, error: null })) };
+        }
+        if (tabla === 'financiaciones') {
+          // Venta sin financiación: la base no devuelve fila
+          return { select: vi.fn().mockReturnValue(consulta({ data: null, error: null })) };
         }
         if (tabla === 'v_costo_vehiculo') {
           return {

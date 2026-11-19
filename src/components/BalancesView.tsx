@@ -7,6 +7,9 @@ export interface BalancesViewProps {
   cuentas: CuentaItem[];
   inventario?: { total: number; cantidad: number };
   errorInventario?: boolean;
+  /** Lo que queda por cobrar de las ventas financiadas (no es disponible) */
+  porCobrar?: number;
+  errorPorCobrar?: boolean;
   onVolver: () => void;
   onIrACuentas: () => void;
 }
@@ -16,6 +19,8 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
   cuentas,
   inventario = { total: 0, cantidad: 0 },
   errorInventario = false,
+  porCobrar = 0,
+  errorPorCobrar = false,
   onVolver,
   onIrACuentas,
 }) => {
@@ -58,6 +63,18 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
           <div className="text-lg font-bold text-gray-900 mt-1">
             {`${formatMoney(inventario.total)} · ${inventario.cantidad} ${inventario.cantidad === 1 ? 'vehículo' : 'vehículos'}`}
           </div>
+        )}
+      </section>
+
+      {/* Card Por cobrar: dinero de ventas financiadas que todavía no entró (no toca el disponible) */}
+      <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-6">
+        <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">
+          Por cobrar
+        </span>
+        {errorPorCobrar ? (
+          <p role="alert" className="text-sm text-red-600 mt-1">No se pudo cargar lo que queda por cobrar.</p>
+        ) : (
+          <div className="text-lg font-bold text-gray-900 mt-1">{formatMoney(porCobrar)}</div>
         )}
       </section>
 
