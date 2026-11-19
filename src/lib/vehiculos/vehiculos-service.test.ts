@@ -684,6 +684,193 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('registrarVentaConPermutas', () => {
+    const permuta1 = { marca: 'Honda', modelo: '110cc', anio: 2015, valorPactado: 1000000 };
+    const permuta2 = { marca: 'Ford', modelo: 'Utilitario', anio: 2012, valorPactado: 2500000 };
+    const base = { vehiculoId: 'v14', precio: 8000000, comprador: 'Pedro', cobros: [{ cuentaId: 'c1', monto: 4500000 }] };
+
+    it('una permuta con datos incompletos no registra nada', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVentaConPermutas({ ...base, permutas: [{ ...permuta1, marca: '' }] });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/faltan datos/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('una permuta con valor 0 no registra', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVentaConPermutas({ ...base, permutas: [{ ...permuta1, valorPactado: 0 }] });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/mayor que 0/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('si las permutas superan el precio, dice cuánto sobra', async () => {
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVentaConPermutas({
+        vehiculoId: 'v14', precio: 3000000, cobros: [], permutas: [permuta1, permuta2],
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/superan el precio.*sobran \$ 500\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('si precio y cobros + permutas no cierran, dice cuánto falta o sobra', async () => {
+      const service = new VehiculosService(mockDb);
+      const falta = await service.registrarVentaConPermutas({
+        ...base, cobros: [{ cuentaId: 'c1', monto: 4000000 }], permutas: [permuta1, permuta2],
+      });
+      expect(falta.error).toMatch(/faltan \$ 500\.000/i);
+      expect(mockDb.rpc).not.toHaveBeenCalled();
+    });
+
+    it('con dos permutas registra la venta, manda la lista a la RPC y devuelve los códigos en orden', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: {
+          venta_id: 'ven1', codigo: 'MC-014', ganancia: 1000000,
+          permutas: [{ vehiculo_id: 'v31', codigo: 'MC-031' }, { vehiculo_id: 'v32', codigo: 'MC-032' }],
+        },
+        error: null,
+      });
+      const service = new VehiculosService(mockDb);
+      const res = await service.registrarVentaConPermutas({ ...base, permutas: [permuta1, permuta2] });
+
+      expect(res.success).toBe(true);
+      expect(res.permutas).toEqual([
+        { id: 'v31', codigo: 'MC-031' },
+        { id: 'v32', codigo: 'MC-032' },
+      ]);
+      expect(mockDb.rpc).toHaveBeenCalledWith('registrar_venta', expect.objectContaining({
+        p_vehiculo_id: 'v14',
+        p_precio: 8000000,
+        p_permutas: [
+          { marca: 'Honda', modelo: '110cc', anio: 2015, color: null, patente: null, valor_pactado: 1000000 },
+          { marca: 'Ford', modelo: 'Utilitario', anio: 2012, color: null, patente: null, valor_pactado: 2500000 },
+        ],
+      }));
+    });
+
+    it('si una foto falla, ese auto queda sin foto y la venta igual queda guardada', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({
+        data: {
+          venta_id: 'ven1', codigo: 'MC-014', ganancia: 1000000,
+          permutas: [{ vehiculo_id: 'v31', codigo: 'MC-031' }, { vehiculo_id: 'v32', codigo: 'MC-032' }],
+        },
+        error: null,
+      });
+      const service = new VehiculosService(mockDb);
+      const agregar = vi
+        .spyOn(service, 'agregarFoto')
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ success: false, error: 'No se pudo subir la foto' });
+
+      const res = await service.registrarVentaConPermutas({
+        ...base,
+        permutas: [{ ...permuta1, foto: new Blob(['a']) }, { ...permuta2, foto: new Blob(['b']) }],
+      });
+
+      expect(res.success).toBe(true);
+      expect(agregar).toHaveBeenCalledTimes(2);
+      expect(res.avisosFoto).toEqual(['MC-032: No se pudo subir la foto']);
+    });
+  });
+
+  describe('obtenerDetalle: permutas', () => {
+    const builder = (filas: Array<Record<string, unknown>>): Record<string, unknown> => {
+      const b: Record<string, unknown> = {
+        eq: vi.fn((col: string, val: unknown) => builder(filas.filter((f) => f[col] === val))),
+        maybeSingle: vi.fn(() => Promise.resolve({ data: filas[0] ?? null, error: null })),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: filas, error: null }).then(ok, ko),
+      };
+      return b;
+    };
+
+    it('un recibido sabe de qué venta entró', async () => {
+      const tablas: Record<string, Array<Record<string, unknown>>> = {
+        vehiculos: [
+          { id: 'v31', codigo: 'MC-031', marca: 'Honda', modelo: '110cc', anio: 2015, color: null, patente: null,
+            estado: 'en_stock', origen: 'permuta', fecha_ingreso: '2026-11-17', vendedor_texto: 'Pedro', valor_ingreso: 1000000 },
+        ],
+        v_costo_vehiculo: [{ vehiculo_id: 'v31', valor_ingreso: 1000000, gastos_asignados: 0, costo_real: 1000000 }],
+        movimientos: [],
+        asignaciones_gasto: [],
+        venta_permutas: [
+          { vehiculo_recibido_id: 'v31', venta_id: 'ven1', valor_pactado: 1000000,
+            venta: { vehiculo: { codigo: 'MC-014' } }, vehiculo: { codigo: 'MC-031', marca: 'Honda', modelo: '110cc' } },
+        ],
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => ({ select: vi.fn(() => builder(tablas[tabla] ?? [])) }));
+
+      const res = await new VehiculosService(mockDb).obtenerDetalle('v31');
+
+      expect(res.detalle?.permutaDeVenta).toBe('MC-014');
+    });
+
+    it('una venta lista sus permutas con código, marca, modelo y valor pactado', async () => {
+      const tablas: Record<string, Array<Record<string, unknown>>> = {
+        vehiculos: [
+          { id: 'v14', codigo: 'MC-014', marca: 'Peugeot', modelo: '208', anio: 2018, color: null, patente: null,
+            estado: 'vendido', origen: 'compra', fecha_ingreso: '2026-11-01', vendedor_texto: null, valor_ingreso: 6000000 },
+        ],
+        v_costo_vehiculo: [{ vehiculo_id: 'v14', valor_ingreso: 6000000, gastos_asignados: 0, costo_real: 6000000 }],
+        movimientos: [
+          { venta_id: 'ven1', tipo: 'venta_cobro', anulado: false, monto: 4500000, cuenta: { nombre: 'Caja efectivo' } },
+        ],
+        asignaciones_gasto: [],
+        ventas: [
+          { id: 'ven1', vehiculo_id: 'v14', comprador_texto: 'Pedro', fecha: '2026-11-17', precio_total: 8000000, anulada: false },
+        ],
+        v_ganancia_venta: [{ venta_id: 'ven1', ganancia: 1000000 }],
+        venta_permutas: [
+          { venta_id: 'ven1', vehiculo_recibido_id: 'v31', valor_pactado: 1000000,
+            vehiculo: { codigo: 'MC-031', marca: 'Honda', modelo: '110cc' } },
+        ],
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => ({ select: vi.fn(() => builder(tablas[tabla] ?? [])) }));
+
+      const res = await new VehiculosService(mockDb).obtenerDetalle('v14');
+
+      expect(res.detalle?.venta?.permutas).toEqual([
+        { vehiculoId: 'v31', codigo: 'MC-031', marca: 'Honda', modelo: '110cc', valorPactado: 1000000 },
+      ]);
+    });
+  });
+
+  describe('vistaPreviaAnularVenta', () => {
+    it('lista todos los autos recibidos de la venta con sus gastos', async () => {
+      const filas = [
+        { vehiculo_recibido_id: 'v31', vehiculo: { codigo: 'MC-031' } },
+        { vehiculo_recibido_id: 'v32', vehiculo: { codigo: 'MC-032' } },
+      ];
+      const builder = (f: Array<Record<string, unknown>>): Record<string, unknown> => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn(() => builder(f)),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: f, error: null }).then(ok, ko),
+        };
+        return b;
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => builder(filas)) });
+
+      const service = new VehiculosService(mockDb);
+      vi.spyOn(service, 'vistaPreviaAnulacionVehiculo').mockImplementation(async (id: string) => ({
+        pagosCompra: [],
+        gastosQueSeAnulan: id === 'v32' ? { cantidad: 1, total: 80000 } : { cantidad: 0, total: 0 },
+        partesSinAsignar: { cantidad: 0, total: 0 },
+      }));
+
+      const res = await service.vistaPreviaAnularVenta('ven1');
+
+      expect(mockDb.from).toHaveBeenCalledWith('venta_permutas');
+      expect(res.map((r) => r.codigo)).toEqual(['MC-031', 'MC-032']);
+      expect(res[1].gastosQueSeAnulan).toEqual({ cantidad: 1, total: 80000 });
+    });
+  });
+
   describe('listarSocios', () => {
     it('devuelve los socios con su id y su nombre', async () => {
       const consulta = {

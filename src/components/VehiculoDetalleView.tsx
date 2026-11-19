@@ -11,6 +11,10 @@ export interface VehiculoDetalleViewProps {
   vistaPrevia?: VistaPreviaAnulacion;
   onAnularVehiculo?: (motivo: string) => void | Promise<void | { success: boolean; error?: string }>;
   onAnularVenta?: (motivo: string) => void | Promise<void | { success: boolean; error?: string }>;
+  /** Lleva al detalle de un auto recibido en parte de pago */
+  onVerRecibido?: (vehiculoId: string) => void;
+  /** Autos recibidos de la venta con lo que se anula con cada uno (para el aviso de anular la venta) */
+  vistaPreviaVenta?: Array<{ id: string; codigo: string; gastosQueSeAnulan?: { cantidad: number; total: number } }>;
 }
 
 const ETIQUETA_ESTADO: Record<DetalleVehiculo['estado'], string> = {
@@ -54,6 +58,8 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   vistaPrevia,
   onAnularVehiculo,
   onAnularVenta,
+  onVerRecibido,
+  vistaPreviaVenta,
 }) => {
   const [aAnular, setAAnular] = useState<'vehiculo' | 'venta' | null>(null);
   const [motivo, setMotivo] = useState<string>('');
@@ -62,7 +68,21 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   const textoAviso = (): string[] => {
     if (aAnular === 'venta' && detalle.venta) {
       const cobros = detalle.venta.cobros.map((c) => `${formatMoney(c.monto)} de ${c.cuentaNombre}`).join(' y ');
-      return [`Vas a anular la venta de ${detalle.codigo} por ${formatMoney(detalle.venta.precioVenta)}; salen ${cobros}`];
+      const lineasVenta = [
+        `Vas a anular la venta de ${detalle.codigo} por ${formatMoney(detalle.venta.precioVenta)}; salen ${cobros}`,
+      ];
+      // Autos recibidos en parte de pago: se anulan con la venta, y sus gastos si los tienen
+      const recibidos = vistaPreviaVenta ?? [];
+      if (recibidos.length > 0) {
+        lineasVenta.push(`También se anulan ${recibidos.map((r) => r.codigo).join(' y ')}, que entraron por permuta`);
+        const conGastos = recibidos.filter((r) => (r.gastosQueSeAnulan?.cantidad ?? 0) > 0);
+        const cantidad = conGastos.reduce((acc, r) => acc + (r.gastosQueSeAnulan?.cantidad ?? 0), 0);
+        const total = conGastos.reduce((acc, r) => acc + (r.gastosQueSeAnulan?.total ?? 0), 0);
+        if (cantidad > 0) {
+          lineasVenta.push(`Se van a anular también ${cantidad} ${cantidad === 1 ? 'gasto' : 'gastos'} por ${formatMoney(total)}`);
+        }
+      }
+      return lineasVenta;
     }
     const lineas = [
       `Vas a anular ${detalle.origen === 'inventario_inicial' ? 'el alta' : 'la compra'} de ${detalle.codigo} por ${formatMoney(detalle.valorIngreso)}`,
@@ -116,6 +136,12 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
           Anulado por {detalle.anulado.por}
           {detalle.anulado.el ? ` el ${diaMesBA(detalle.anulado.el)}` : ''}
           {detalle.anulado.motivo ? ` · Motivo: ${detalle.anulado.motivo}` : ''}
+        </p>
+      )}
+
+      {detalle.origen === 'permuta' && detalle.permutaDeVenta && (
+        <p className="mb-3 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3">
+          Permuta en la venta de {detalle.permutaDeVenta}
         </p>
       )}
 
@@ -221,7 +247,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             </button>
           )
         ) : (
-          onAnularVehiculo && (
+          onAnularVehiculo && detalle.origen !== 'permuta' && (
             <button
               type="button"
               onClick={() => {
@@ -283,6 +309,23 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
               </li>
             ))}
           </ul>
+
+          {(detalle.venta.permutas ?? []).length > 0 && (
+            <ul className="space-y-1 text-sm text-gray-800 mt-1">
+              {(detalle.venta.permutas ?? []).map((p) => (
+                <li key={p.vehiculoId} className="flex justify-between">
+                  <button
+                    type="button"
+                    onClick={() => onVerRecibido?.(p.vehiculoId)}
+                    className="text-left text-blue-700 hover:underline"
+                  >
+                    Permuta: {p.codigo} {p.marca} {p.modelo}
+                  </button>
+                  <span className="font-medium">{formatMoney(p.valorPactado)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
 
           {detalle.venta.ganancia < 0 ? (
             <p className="text-lg font-bold text-red-600 mt-3">Pérdida {formatoNegativo(detalle.venta.ganancia)}</p>

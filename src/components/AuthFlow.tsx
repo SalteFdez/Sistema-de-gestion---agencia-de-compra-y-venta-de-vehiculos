@@ -54,6 +54,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [detalleError, setDetalleError] = useState<boolean>(false);
   // Lo que se anula con la compra, para el aviso "¿Seguro?" del detalle
   const [vistaPreviaDetalle, setVistaPreviaDetalle] = useState<VistaPreviaAnulacion | undefined>(undefined);
+  // Autos recibidos en la venta del detalle, para el aviso de anular la venta
+  const [vistaPreviaVenta, setVistaPreviaVenta] = useState<Array<{ id: string; codigo: string; gastosQueSeAnulan?: { cantidad: number; total: number } }> | undefined>(undefined);
 
   const abrirDetalle = async (id: string) => {
     if (!vehiculosService) return;
@@ -62,12 +64,20 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     setDetalleVehiculo(null);
     setDetalleError(false);
     setVistaPreviaDetalle(undefined);
+    setVistaPreviaVenta(undefined);
     setFotoDetalle(item?.fotoUrl ?? null);
     setCurrentView('vehiculo_detalle');
     try {
       const res = await vehiculosService.obtenerDetalle(id);
       if (res.success && res.detalle) {
         setDetalleVehiculo(res.detalle);
+        if (res.detalle.estado === 'vendido' && res.detalle.venta) {
+          try {
+            setVistaPreviaVenta(await vehiculosService.vistaPreviaAnularVenta(res.detalle.venta.ventaId));
+          } catch {
+            // Sin la vista previa, el aviso de anular la venta no lista los autos recibidos
+          }
+        }
         if (res.detalle.estado !== 'vendido' && !res.detalle.anulado) {
           try {
             setVistaPreviaDetalle(await vehiculosService.vistaPreviaAnulacionVehiculo(id));
@@ -577,7 +587,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             onRegistrar={
               vehiculosService
                 ? async (params) => {
-                    const res = await vehiculosService.registrarVenta(params);
+                    const res = await vehiculosService.registrarVentaConPermutas(params);
                     if (res.success) {
                       await Promise.all([loadCuentasData(), loadVehiculosData()]);
                     }
@@ -628,6 +638,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               setCurrentView('gasto');
             }}
             vistaPrevia={vistaPreviaDetalle}
+            vistaPreviaVenta={vistaPreviaVenta}
+            onVerRecibido={(vehiculoId) => void abrirDetalle(vehiculoId)}
             onAnularVehiculo={
               vehiculosService
                 ? async (motivo) => {

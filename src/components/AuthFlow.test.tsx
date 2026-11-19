@@ -1019,7 +1019,7 @@ describe('AuthFlow UI Integration', () => {
     const mockVehiculosService = {
       listarVehiculos: vi.fn().mockResolvedValue([stock]),
       obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
-      registrarVenta: vi.fn().mockResolvedValue({ success: true, ventaId: 'ven30', codigo: 'MC-030', ganancia: 500000 }),
+      registrarVentaConPermutas: vi.fn().mockResolvedValue({ success: true, ventaId: 'ven30', codigo: 'MC-030', ganancia: 500000 }),
     };
 
     render(
@@ -1038,7 +1038,7 @@ describe('AuthFlow UI Integration', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
 
     expect(await screen.findByTestId('codigo-venta')).toHaveTextContent('MC-030');
-    expect(mockVehiculosService.registrarVenta).toHaveBeenCalledTimes(1);
+    expect(mockVehiculosService.registrarVentaConPermutas).toHaveBeenCalledTimes(1);
     expect(mockCuentasService.obtenerCuentasConSaldo.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(mockVehiculosService.listarVehiculos.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
@@ -1120,7 +1120,7 @@ describe('AuthFlow UI Integration', () => {
       // Primera carga: en stock; después de la venta, vendido
       listarVehiculos: vi.fn().mockResolvedValueOnce([enStock]).mockResolvedValue([vendido]),
       obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
-      registrarVenta: vi.fn().mockResolvedValue({ success: true, ventaId: 'ven50', codigo: 'MC-050', ganancia: 0 }),
+      registrarVentaConPermutas: vi.fn().mockResolvedValue({ success: true, ventaId: 'ven50', codigo: 'MC-050', ganancia: 0 }),
     };
 
     render(

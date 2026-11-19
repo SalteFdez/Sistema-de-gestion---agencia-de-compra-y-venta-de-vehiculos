@@ -236,6 +236,37 @@ export interface MovimientoSocioResult {
   error?: string;
 }
 
+export interface PermutaParams {
+  marca: string;
+  modelo: string;
+  anio: number;
+  color?: string;
+  patente?: string;
+  foto?: Blob;
+  /** Lo que vale el auto recibido: pasa a ser su costo */
+  valorPactado: number;
+}
+
+export interface RegistrarVentaConPermutasParams {
+  vehiculoId: string;
+  precio: number;
+  comprador?: string;
+  cobros: CobroVenta[];
+  permutas: PermutaParams[];
+}
+
+export interface RegistrarVentaConPermutasResult {
+  success: boolean;
+  error?: string;
+  ventaId?: string;
+  codigo?: string;
+  ganancia?: number;
+  /** Autos recibidos, en el orden en que se cargaron */
+  permutas?: Array<{ id: string; codigo: string }>;
+  /** Fotos que no se pudieron subir (la venta igual quedó guardada) */
+  avisosFoto?: string[];
+}
+
 export interface AnularVentaParams {
   ventaId: string;
   motivo: string;
@@ -351,6 +382,8 @@ export interface VentaDetalle {
   precioVenta: number;
   ganancia: number;
   cobros: PagoDetalle[];
+  /** Autos recibidos en parte de pago en esta venta */
+  permutas?: Array<{ vehiculoId: string; codigo: string; marca: string; modelo: string; valorPactado: number }>;
 }
 
 export interface GastoDetalle {
@@ -378,6 +411,8 @@ export interface DetalleVehiculo {
   pagos: PagoDetalle[];
   venta: VentaDetalle | null;
   gastos: GastoDetalle[];
+  /** Si entró por permuta: código del auto vendido en cuya venta entró */
+  permutaDeVenta?: string | null;
   /** Presente solo si el vehículo fue anulado (se llega desde el historial) */
   anulado?: { por: string | null; motivo: string | null; el: string | null } | null;
 }
@@ -791,6 +826,104 @@ export class VehiculosService {
     return { success: true };
   }
 
+  /** Venta con una o más permutas (autos recibidos que entran al stock con su valor pactado). */
+  async registrarVentaConPermutas(params: RegistrarVentaConPermutasParams): Promise<RegistrarVentaConPermutasResult> {
+    const sumaPermutas = params.permutas.reduce((acc, p) => acc + (p.valorPactado || 0), 0);
+    for (const p of params.permutas) {
+      if (!p.marca?.trim() || !p.modelo?.trim() || !p.anio) {
+        return { success: false, error: 'Faltan datos del vehículo recibido: marca, modelo y año' };
+      }
+      if (!(p.valorPactado > 0)) {
+        return { success: false, error: 'El valor pactado tiene que ser mayor que 0' };
+      }
+    }
+    if (sumaPermutas > params.precio) {
+      return {
+        success: false,
+        error: `Las permutas superan el precio. Sobran ${formatMoney(sumaPermutas - params.precio)}`,
+      };
+    }
+    const sumaCobros = params.cobros.reduce((acc, c) => acc + c.monto, 0);
+    const total = sumaCobros + sumaPermutas;
+    if (total !== params.precio) {
+      const detalle =
+        total < params.precio ? `Faltan ${formatMoney(params.precio - total)}` : `Sobran ${formatMoney(total - params.precio)}`;
+      return { success: false, error: `Precio, cobros y permutas no cierran. ${detalle}` };
+    }
+
+    let data: unknown;
+    let error: { message: string } | null;
+    try {
+      ({ data, error } = await this.db.rpc('registrar_venta', {
+        p_vehiculo_id: params.vehiculoId,
+        p_precio: params.precio,
+        p_comprador: params.comprador?.trim() || null,
+        p_cobros: params.cobros.map((c) => ({ cuenta_id: c.cuentaId, monto: c.monto })),
+        p_permutas: params.permutas.map((p) => ({
+          marca: p.marca.trim(),
+          modelo: p.modelo.trim(),
+          anio: p.anio,
+          color: p.color?.trim() || null,
+          patente: p.patente?.trim() || null,
+          valor_pactado: p.valorPactado,
+        })),
+      }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se guardó la venta: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message || 'No se pudo registrar la venta'}. No se guardó nada.` };
+    }
+
+    const fila = data as {
+      venta_id: string;
+      codigo: string;
+      ganancia: number | string | null;
+      permutas: Array<{ vehiculo_id: string; codigo: string }>;
+    };
+    const recibidos = (fila.permutas ?? []).map((r) => ({ id: r.vehiculo_id, codigo: r.codigo }));
+
+    // Las fotos van después de la RPC: si una falla, ese auto queda sin foto y la venta igual se guardó
+    const avisosFoto: string[] = [];
+    for (let i = 0; i < params.permutas.length; i++) {
+      const foto = params.permutas[i].foto;
+      const recibido = recibidos[i];
+      if (foto && recibido) {
+        const subida = await this.agregarFoto(recibido.id, foto);
+        if (!subida.success) {
+          avisosFoto.push(`${recibido.codigo}: ${subida.error ?? 'No se pudo subir la foto'}`);
+        }
+      }
+    }
+
+    return {
+      success: true,
+      ventaId: fila.venta_id,
+      codigo: fila.codigo,
+      ganancia: Number(fila.ganancia) || 0,
+      permutas: recibidos,
+      avisosFoto,
+    };
+  }
+
+  /** Autos recibidos en la venta, con lo que se anula con cada uno (gastos y partes). */
+  async vistaPreviaAnularVenta(ventaId: string): Promise<Array<{ id: string; codigo: string } & VistaPreviaAnulacion>> {
+    const { data } = await this.db
+      .from('venta_permutas')
+      .select('vehiculo_recibido_id, vehiculo:vehiculos(codigo)')
+      .eq('venta_id', ventaId);
+    const filas = (Array.isArray(data) ? data : []) as Array<{
+      vehiculo_recibido_id: string;
+      vehiculo: { codigo: string } | null;
+    }>;
+    const res: Array<{ id: string; codigo: string } & VistaPreviaAnulacion> = [];
+    for (const f of filas) {
+      const vista = await this.vistaPreviaAnulacionVehiculo(f.vehiculo_recibido_id);
+      res.push({ id: f.vehiculo_recibido_id, codigo: f.vehiculo?.codigo ?? '', ...vista });
+    }
+    return res;
+  }
+
   async anularVenta(params: AnularVentaParams): Promise<AnularVentaResult> {
     if (!params.motivo?.trim()) {
       return { success: false, error: 'El motivo es obligatorio' };
@@ -1135,6 +1268,22 @@ export class VehiculosService {
 
     // Venta: solo si el vehículo está vendido (la venta no anulada y sus cobros)
     let venta: VentaDetalle | null = null;
+    let permutasVenta: NonNullable<VentaDetalle['permutas']> = [];
+
+    // Si entró por permuta, de qué venta salió
+    let permutaDeVenta: string | null = null;
+    if (fila.origen === 'permuta') {
+      const { data: deQueVenta, error: errorDeQueVenta } = await this.db
+        .from('venta_permutas')
+        .select('vehiculo_recibido_id, venta:ventas(vehiculo:vehiculos(codigo))')
+        .eq('vehiculo_recibido_id', id)
+        .maybeSingle();
+      if (errorDeQueVenta) {
+        return { success: false, error: errorDeQueVenta.message };
+      }
+      const r = deQueVenta as { venta: { vehiculo: { codigo: string } | null } | null } | null;
+      permutaDeVenta = r?.venta?.vehiculo?.codigo ?? null;
+    }
     if (fila.estado === 'vendido') {
       const { data: filaVenta, error: errorVenta } = await this.db
         .from('ventas')
@@ -1164,9 +1313,27 @@ export class VehiculosService {
         if (errorGanancia) {
           return { success: false, error: errorGanancia.message };
         }
+        const { data: filasPermutas, error: errorPermutas } = await this.db
+          .from('venta_permutas')
+          .select('vehiculo_recibido_id, valor_pactado, vehiculo:vehiculos(codigo, marca, modelo)')
+          .eq('venta_id', v.id);
+        if (errorPermutas) {
+          return { success: false, error: errorPermutas.message };
+        }
+        permutasVenta = (Array.isArray(filasPermutas) ? filasPermutas : []).map((p) => {
+          const r = p as { vehiculo_recibido_id: string; valor_pactado: number | string; vehiculo: { codigo: string; marca: string; modelo: string } | null };
+          return {
+            vehiculoId: r.vehiculo_recibido_id,
+            codigo: r.vehiculo?.codigo ?? '',
+            marca: r.vehiculo?.marca ?? '',
+            modelo: r.vehiculo?.modelo ?? '',
+            valorPactado: Number(r.valor_pactado) || 0,
+          };
+        });
         const cobros = (filasCobro ?? []) as Array<{ monto: number | string; cuenta: { nombre: string } | null }>;
         venta = {
           ventaId: v.id,
+          ...(permutasVenta.length > 0 ? { permutas: permutasVenta } : {}),
           fecha: v.fecha,
           comprador: v.comprador_texto ?? null,
           precioVenta: Number(v.precio_total) || 0,
@@ -1196,6 +1363,7 @@ export class VehiculosService {
         pagos,
         venta,
         gastos,
+        permutaDeVenta,
         anulado: fila.anulado === true
           ? {
               por: ((fila.anulador as { nombre: string } | null)?.nombre) ?? null,
