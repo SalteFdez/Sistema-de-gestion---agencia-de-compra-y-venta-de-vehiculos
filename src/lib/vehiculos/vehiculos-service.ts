@@ -246,6 +246,23 @@ export interface MovimientoSocioResult {
   error?: string;
 }
 
+export interface FotoVehiculo {
+  id: string;
+  ruta: string;
+  /** URL firmada; null si no se pudo firmar */
+  url: string | null;
+  orden: number;
+  /** Es la foto principal (la del listado) */
+  esPrincipal: boolean;
+}
+
+export interface AgregarFotosResult {
+  success: boolean;
+  error?: string;
+  agregadas: number;
+  fallidas: Array<{ numero: number; error: string }>;
+}
+
 export interface CuotaPorCobrar {
   cuotaId: string;
   ventaId: string;
@@ -452,6 +469,8 @@ export interface DetalleVehiculo {
   gastos: GastoDetalle[];
   /** Si entró por permuta: código del auto vendido en cuya venta entró */
   permutaDeVenta?: string | null;
+  /** Galería de fotos vigentes, en orden de llegada */
+  fotos?: FotoVehiculo[];
   /** Presente solo si el vehículo fue anulado (se llega desde el historial) */
   anulado?: { por: string | null; motivo: string | null; el: string | null } | null;
 }
@@ -1534,10 +1553,38 @@ export class VehiculosService {
       }
     }
 
+    // Galería: fotos vigentes en orden, con todas las URLs firmadas en un solo pedido
+    const { data: filasFotos, error: errorFotos } = await this.db
+      .from('vehiculo_fotos')
+      .select('id, ruta, orden, quitada')
+      .eq('vehiculo_id', id)
+      .eq('quitada', false);
+    if (errorFotos) {
+      return { success: false, error: errorFotos.message };
+    }
+    const fotosVigentes = ((Array.isArray(filasFotos) ? filasFotos : []) as Array<{ id: string; ruta: string; orden: number }>)
+      .sort((a, b) => Number(a.orden) - Number(b.orden));
+    let urlPorRuta = new Map<string, string>();
+    if (fotosVigentes.length > 0 && this.storage) {
+      const { data: firmadas } = await this.storage
+        .from('vehiculos')
+        .createSignedUrls(fotosVigentes.map((f) => f.ruta), 3600);
+      urlPorRuta = new Map((firmadas ?? []).filter((f) => f.signedUrl).map((f) => [f.path, f.signedUrl]));
+    }
+    // La principal es la que tiene la misma ruta que vehiculos.foto_url
+    const fotos: FotoVehiculo[] = fotosVigentes.map((f) => ({
+      id: f.id,
+      ruta: f.ruta,
+      url: urlPorRuta.get(f.ruta) ?? null,
+      orden: Number(f.orden),
+      esPrincipal: f.ruta === (fila.foto_url as string | null),
+    }));
+
     return {
       success: true,
       detalle: {
         id: String(fila.id),
+        fotos,
         codigo: String(fila.codigo),
         marca: String(fila.marca),
         modelo: String(fila.modelo),
@@ -1672,7 +1719,7 @@ export class VehiculosService {
   private async subirFotoYGuardarRuta(
     id: string,
     foto: Blob
-  ): Promise<{ path: string; error: null } | { path: null; error: 'subida' | 'ruta' }> {
+  ): Promise<{ path: string; error: null; detalle?: undefined } | { path: null; error: 'subida' | 'ruta'; detalle?: string }> {
     const path = `${id}/${crypto.randomUUID()}.jpg`;
     const { error: errorSubida } = await this.storage!
       .from('vehiculos')
@@ -1682,16 +1729,79 @@ export class VehiculosService {
       return { path: null, error: 'subida' };
     }
 
-    const { error: errorRuta } = await this.db
-      .from('vehiculos')
-      .update({ foto_url: path })
-      .eq('id', id);
-
+    // La foto entra a la galería con la RPC: si el auto no tenía principal, esta pasa a serlo
+    let errorRuta: { message: string } | null;
+    try {
+      ({ error: errorRuta } = await this.db.rpc('agregar_foto_vehiculo', { p_vehiculo_id: id, p_ruta: path }));
+    } catch {
+      return { path: null, error: 'ruta', detalle: 'Sin conexión. La foto no se guardó en la galería.' };
+    }
     if (errorRuta) {
-      return { path: null, error: 'ruta' };
+      return { path: null, error: 'ruta', detalle: `${errorRuta.message}. La foto no se guardó en la galería.` };
     }
 
     return { path, error: null };
+  }
+
+  /** Hace principal una foto del auto (la que muestran el listado, Vender y Registrar gasto). */
+  async usarComoPrincipal(fotoId: string): Promise<{ success: boolean; error?: string }> {
+    let error: { message: string } | null;
+    try {
+      ({ error } = await this.db.rpc('usar_como_principal', { p_foto_id: fotoId }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si cambió la principal: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message}. No se cambió nada.` };
+    }
+    return { success: true };
+  }
+
+  /** Baja lógica: la foto deja de verse en la galería. El archivo queda en Storage. */
+  async quitarFoto(fotoId: string): Promise<{ success: boolean; error?: string }> {
+    let error: { message: string } | null;
+    try {
+      ({ error } = await this.db.rpc('quitar_foto', { p_foto_id: fotoId }));
+    } catch {
+      return { success: false, error: 'Sin conexión. No se pudo confirmar si se quitó la foto: revisá antes de reintentar.' };
+    }
+    if (error) {
+      return { success: false, error: `${error.message}. No se quitó nada.` };
+    }
+    return { success: true };
+  }
+
+  /** Varias fotos en secuencia. Si una falla, las demás se guardan igual. El límite de 10 vigentes se chequea antes. */
+  async agregarFotos(
+    id: string,
+    fotos: Blob[],
+    fotosVigentes: number,
+    onProgreso?: (hecho: number, total: number) => void
+  ): Promise<AgregarFotosResult> {
+    const LIMITE = 10;
+    const caben = LIMITE - fotosVigentes;
+    if (fotos.length > caben) {
+      return {
+        success: false,
+        agregadas: 0,
+        fallidas: [],
+        error: caben <= 0
+          ? 'Este vehículo ya tiene 10 fotos'
+          : `Solo podés agregar ${caben} foto${caben === 1 ? '' : 's'} más`,
+      };
+    }
+    const fallidas: Array<{ numero: number; error: string }> = [];
+    let agregadas = 0;
+    for (let i = 0; i < fotos.length; i++) {
+      onProgreso?.(i + 1, fotos.length);
+      const res = await this.agregarFoto(id, fotos[i]);
+      if (res.success) {
+        agregadas += 1;
+      } else {
+        fallidas.push({ numero: i + 1, error: res.error ?? 'No se pudo subir la foto' });
+      }
+    }
+    return { success: fallidas.length === 0, agregadas, fallidas };
   }
 
   async agregarFoto(id: string, foto: Blob): Promise<AgregarFotoResult> {
@@ -1700,7 +1810,7 @@ export class VehiculosService {
     }
     const subida = await this.subirFotoYGuardarRuta(id, foto);
     if (subida.error) {
-      return { success: false, error: AVISO_FOTO_AGREGAR[subida.error] };
+      return { success: false, error: subida.detalle ?? AVISO_FOTO_AGREGAR[subida.error] };
     }
     const { data } = await this.storage.from('vehiculos').createSignedUrls([subida.path], 3600);
     return { success: true, fotoUrl: data?.[0]?.signedUrl };

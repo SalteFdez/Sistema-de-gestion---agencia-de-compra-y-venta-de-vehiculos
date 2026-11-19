@@ -15,6 +15,7 @@ import { MoverPlataView } from './MoverPlataView';
 import { PasarPlataView } from './PasarPlataView';
 import { PendientesAsignarView } from './PendientesAsignarView';
 import { AsignarGastoView } from './AsignarGastoView';
+import { comprimirFotoEnNavegador } from '../lib/vehiculos/comprimir-foto';
 import { CuotasPorCobrarView, contarVencidas } from './CuotasPorCobrarView';
 import { CobrarCuotaView } from './CobrarCuotaView';
 import { formatMoney } from '../lib/format/money';
@@ -57,6 +58,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   // Lo que se anula con la compra, para el aviso "¿Seguro?" del detalle
   const [vistaPreviaDetalle, setVistaPreviaDetalle] = useState<VistaPreviaAnulacion | undefined>(undefined);
   // Autos recibidos en la venta del detalle, para el aviso de anular la venta
+  // Progreso de la subida de fotos desde el detalle
+  const [progresoFotosDetalle, setProgresoFotosDetalle] = useState<{ hecho: number; total: number } | undefined>(undefined);
   // Cobros de cuotas ya hechos de la venta del detalle (salen de las cuentas si se anula)
   const [cobrosCuotasVenta, setCobrosCuotasVenta] = useState<{ cantidad: number; total: number } | undefined>(undefined);
   const [vistaPreviaVenta, setVistaPreviaVenta] = useState<Array<{ id: string; codigo: string; gastosQueSeAnulan?: { cantidad: number; total: number } }> | undefined>(undefined);
@@ -725,6 +728,35 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             }}
             vistaPrevia={vistaPreviaDetalle}
             vistaPreviaVenta={vistaPreviaVenta}
+            progresoFotos={progresoFotosDetalle}
+            onAgregarFotos={async (archivos) => {
+              if (!vehiculosService || !detalleVehiculo) return;
+              const vigentes = (detalleVehiculo.fotos ?? []).length;
+              const comprimidas: Blob[] = [];
+              for (const archivo of archivos) {
+                comprimidas.push(await comprimirFotoEnNavegador(archivo));
+              }
+              const res = await vehiculosService.agregarFotos(detalleVehiculo.id, comprimidas, vigentes, (hecho, total) =>
+                setProgresoFotosDetalle({ hecho, total })
+              );
+              setProgresoFotosDetalle(undefined);
+              if (!res.success) {
+                window.alert(res.error ?? res.fallidas.map((f) => `La foto ${f.numero} no se subió: ${f.error}`).join('\n'));
+              }
+              await Promise.all([abrirDetalle(detalleVehiculo.id), loadVehiculosData()]);
+            }}
+            onUsarComoPrincipal={async (fotoId) => {
+              if (!vehiculosService || !detalleVehiculo) return;
+              const res = await vehiculosService.usarComoPrincipal(fotoId);
+              if (!res.success) window.alert(res.error ?? 'No se cambió nada.');
+              await Promise.all([abrirDetalle(detalleVehiculo.id), loadVehiculosData()]);
+            }}
+            onQuitarFoto={async (fotoId) => {
+              if (!vehiculosService || !detalleVehiculo) return;
+              const res = await vehiculosService.quitarFoto(fotoId);
+              if (!res.success) window.alert(res.error ?? 'No se quitó nada.');
+              await Promise.all([abrirDetalle(detalleVehiculo.id), loadVehiculosData()]);
+            }}
             cobrosCuotas={cobrosCuotasVenta}
             onVerRecibido={(vehiculoId) => void abrirDetalle(vehiculoId)}
             onAnularVehiculo={

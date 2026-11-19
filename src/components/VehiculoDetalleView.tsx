@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { DetalleVehiculo, VistaPreviaAnulacion } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
+import { GaleriaFotos } from './GaleriaFotos';
 
 export interface VehiculoDetalleViewProps {
   detalle: DetalleVehiculo;
@@ -13,6 +14,11 @@ export interface VehiculoDetalleViewProps {
   onAnularVenta?: (motivo: string) => void | Promise<void | { success: boolean; error?: string }>;
   /** Lleva al detalle de un auto recibido en parte de pago */
   onVerRecibido?: (vehiculoId: string) => void;
+  /** Galería: agregar varias fotos, usar una como principal y quitar una (baja lógica) */
+  onAgregarFotos?: (archivos: File[]) => void;
+  onUsarComoPrincipal?: (fotoId: string) => void;
+  onQuitarFoto?: (fotoId: string) => void;
+  progresoFotos?: { hecho: number; total: number };
   /** Cobros de cuotas ya hechos de esta venta: salen de las cuentas si se anula la venta */
   cobrosCuotas?: { cantidad: number; total: number };
   /** Autos recibidos de la venta con lo que se anula con cada uno (para el aviso de anular la venta) */
@@ -63,6 +69,10 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   onVerRecibido,
   vistaPreviaVenta,
   cobrosCuotas,
+  onAgregarFotos,
+  onUsarComoPrincipal,
+  onQuitarFoto,
+  progresoFotos,
 }) => {
   const [aAnular, setAAnular] = useState<'vehiculo' | 'venta' | null>(null);
   const [motivo, setMotivo] = useState<string>('');
@@ -162,7 +172,16 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
       )}
 
       <article className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-        {fotoUrl ? (
+        {detalle.fotos ? (
+          <GaleriaFotos
+            fotos={detalle.fotos}
+            anulado={!!detalle.anulado}
+            progreso={progresoFotos}
+            onAgregar={(archivos) => onAgregarFotos?.(archivos)}
+            onUsarComoPrincipal={(id) => onUsarComoPrincipal?.(id)}
+            onQuitar={(id) => onQuitarFoto?.(id)}
+          />
+        ) : fotoUrl ? (
           <img src={fotoUrl} alt={`${detalle.marca} ${detalle.modelo}`} className="w-full h-64 object-cover" />
         ) : (
           <div className="w-full h-64 flex items-center justify-center bg-gray-100 text-sm text-gray-500">

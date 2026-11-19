@@ -1002,6 +1002,160 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('agregarFoto: galería', () => {
+    const storageOk = () => {
+      const upload = vi.fn().mockResolvedValue({ error: null });
+      const createSignedUrls = vi.fn().mockResolvedValue({ data: [{ path: 'x', signedUrl: 'https://storage.test/x.jpg' }], error: null });
+      return { storage: { from: vi.fn().mockReturnValue({ upload, createSignedUrls }) }, upload };
+    };
+
+    it('agregar una foto la sube y la agrega a la galería con la RPC, sin tocar foto_url a mano', async () => {
+      const { storage } = storageOk();
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { foto_id: 'f1' }, error: null });
+      const service = new VehiculosService(mockDb, storage as unknown as any);
+
+      const res = await service.agregarFoto('v1', new Blob(['jpeg'], { type: 'image/jpeg' }));
+
+      expect(res.success).toBe(true);
+      expect(res.fotoUrl).toBe('https://storage.test/x.jpg');
+      expect(mockDb.rpc).toHaveBeenCalledWith('agregar_foto_vehiculo', {
+        p_vehiculo_id: 'v1',
+        p_ruta: expect.stringMatching(/^v1\/.+\.jpg$/),
+      });
+      expect(mockDb.from).not.toHaveBeenCalledWith('vehiculos');
+    });
+
+    it('si la RPC rechaza la foto (por ejemplo, el límite), lo dice', async () => {
+      const { storage } = storageOk();
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'Ya hay 10 fotos en este vehículo' } });
+      const service = new VehiculosService(mockDb, storage as unknown as any);
+
+      const res = await service.agregarFoto('v1', new Blob(['jpeg'], { type: 'image/jpeg' }));
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/ya hay 10 fotos/i);
+    });
+  });
+
+  describe('usar como principal y quitar foto', () => {
+    it('usar como principal llama a usar_como_principal con la foto', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { vehiculo_id: 'v1' }, error: null });
+      const res = await new VehiculosService(mockDb).usarComoPrincipal('f2');
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('usar_como_principal', { p_foto_id: 'f2' });
+    });
+
+    it('quitar foto llama a quitar_foto y no borra el archivo de Storage', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { vehiculo_id: 'v1' }, error: null });
+      const remove = vi.fn();
+      const storage = { from: vi.fn().mockReturnValue({ remove, upload: vi.fn(), createSignedUrls: vi.fn() }) };
+
+      const res = await new VehiculosService(mockDb, storage as unknown as any).quitarFoto('f2');
+
+      expect(res.success).toBe(true);
+      expect(mockDb.rpc).toHaveBeenCalledWith('quitar_foto', { p_foto_id: 'f2' });
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('si la RPC falla, lo dice y no cambia nada', async () => {
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'La foto no es de este vehículo' } });
+      const res = await new VehiculosService(mockDb).usarComoPrincipal('f9');
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/no es de este vehículo/i);
+      expect(res.error).toMatch(/no se cambió nada/i);
+    });
+  });
+
+  describe('obtenerDetalle: galería', () => {
+    it('trae las fotos vigentes en orden y pide todas las URLs firmadas en un solo pedido', async () => {
+      const builder = (filas: Array<Record<string, unknown>>): Record<string, unknown> => {
+        const b: Record<string, unknown> = {
+          eq: vi.fn((col: string, val: unknown) => builder(filas.filter((f) => f[col] === val))),
+          order: vi.fn(() => builder(filas)),
+          maybeSingle: vi.fn(() => Promise.resolve({ data: filas[0] ?? null, error: null })),
+          then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: filas, error: null }).then(ok, ko),
+        };
+        return b;
+      };
+      const tablas: Record<string, Array<Record<string, unknown>>> = {
+        vehiculos: [
+          { id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null,
+            estado: 'en_stock', origen: 'compra', fecha_ingreso: '2026-11-01', vendedor_texto: null, valor_ingreso: 3000000,
+            foto_url: 'v1/b.jpg' },
+        ],
+        v_costo_vehiculo: [{ vehiculo_id: 'v1', valor_ingreso: 3000000, gastos_asignados: 0, costo_real: 3000000 }],
+        movimientos: [],
+        asignaciones_gasto: [],
+        vehiculo_fotos: [
+          { id: 'f2', vehiculo_id: 'v1', ruta: 'v1/b.jpg', orden: 2, quitada: false },
+          { id: 'f1', vehiculo_id: 'v1', ruta: 'v1/a.jpg', orden: 1, quitada: false },
+          { id: 'f3', vehiculo_id: 'v1', ruta: 'v1/c.jpg', orden: 3, quitada: true },
+        ],
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => ({ select: vi.fn(() => builder(tablas[tabla] ?? [])) }));
+      const createSignedUrls = vi.fn().mockResolvedValue({
+        data: [
+          { path: 'v1/a.jpg', signedUrl: 'https://storage.test/a' },
+          { path: 'v1/b.jpg', signedUrl: 'https://storage.test/b' },
+        ],
+        error: null,
+      });
+      const storage = { from: vi.fn().mockReturnValue({ createSignedUrls }) };
+
+      const res = await new VehiculosService(mockDb, storage as unknown as any).obtenerDetalle('v1');
+
+      expect(res.detalle?.fotos).toEqual([
+        { id: 'f1', ruta: 'v1/a.jpg', url: 'https://storage.test/a', orden: 1, esPrincipal: false },
+        { id: 'f2', ruta: 'v1/b.jpg', url: 'https://storage.test/b', orden: 2, esPrincipal: true },
+      ]);
+      expect(createSignedUrls).toHaveBeenCalledTimes(1);
+      expect(createSignedUrls).toHaveBeenCalledWith(['v1/a.jpg', 'v1/b.jpg'], 3600);
+    });
+  });
+
+  describe('agregarFotos: varias en secuencia', () => {
+    const fotos = () => [new Blob(['a']), new Blob(['b']), new Blob(['c'])];
+
+    it('sube varias una por una, reportando el progreso', async () => {
+      const service = new VehiculosService(mockDb);
+      const agregar = vi.spyOn(service, 'agregarFoto').mockResolvedValue({ success: true, fotoUrl: 'u' });
+      const progreso: Array<[number, number]> = [];
+
+      const res = await service.agregarFotos('v1', fotos(), 0, (hecho, total) => progreso.push([hecho, total]));
+
+      expect(agregar).toHaveBeenCalledTimes(3);
+      expect(progreso).toEqual([[1, 3], [2, 3], [3, 3]]);
+      expect(res).toEqual({ success: true, agregadas: 3, fallidas: [] });
+    });
+
+    it('si una falla, las demás se guardan igual y avisa cuál no subió', async () => {
+      const service = new VehiculosService(mockDb);
+      vi.spyOn(service, 'agregarFoto')
+        .mockResolvedValueOnce({ success: true, fotoUrl: 'u1' })
+        .mockResolvedValueOnce({ success: false, error: 'No se pudo subir la foto' })
+        .mockResolvedValueOnce({ success: true, fotoUrl: 'u3' });
+
+      const res = await service.agregarFotos('v1', fotos(), 0);
+
+      expect(res.agregadas).toBe(2);
+      expect(res.fallidas).toEqual([{ numero: 2, error: 'No se pudo subir la foto' }]);
+    });
+
+    it('no pasa de 10 fotos vigentes y dice cuántas caben todavía, sin subir nada', async () => {
+      const service = new VehiculosService(mockDb);
+      const agregar = vi.spyOn(service, 'agregarFoto');
+
+      const res = await service.agregarFotos('v1', fotos(), 8);
+
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/solo podés agregar 2 foto/i);
+      expect(agregar).not.toHaveBeenCalled();
+    });
+  });
+
   describe('listarVehiculos: patente para buscar', () => {
     it('cada vehículo del listado trae su patente (null si no tiene)', async () => {
       const filas = [
@@ -1414,8 +1568,8 @@ describe('VehiculosService', () => {
       expect(pathSubido).toMatch(/^v3\/.+\.jpg$/);
       expect(blobSubido).toBe(foto);
       expect(opciones).toEqual(expect.objectContaining({ contentType: 'image/jpeg' }));
-      expect(update).toHaveBeenCalledWith({ foto_url: pathSubido });
-      expect(updateEq).toHaveBeenCalledWith('id', 'v3');
+      expect(mockDb.rpc).toHaveBeenCalledWith('agregar_foto_vehiculo', { p_vehiculo_id: 'v3', p_ruta: pathSubido });
+      expect(update).not.toHaveBeenCalled();
     });
 
     it('si la subida de la foto falla, guarda el vehículo sin foto y avisa', async () => {
@@ -2341,9 +2495,9 @@ describe('VehiculosService', () => {
 
   describe('agregarFoto', () => {
     it('sube la foto del vehículo, guarda la ruta y devuelve la URL firmada', async () => {
-      const updateEq = vi.fn().mockResolvedValue({ error: null });
-      const update = vi.fn().mockReturnValue({ eq: updateEq });
+      const update = vi.fn();
       mockDb.from = vi.fn().mockReturnValue({ update });
+      mockDb.rpc = vi.fn().mockResolvedValue({ data: { foto_id: 'f7' }, error: null });
 
       const upload = vi.fn().mockResolvedValue({ error: null });
       const createSignedUrls = vi.fn().mockResolvedValue({
@@ -2359,8 +2513,8 @@ describe('VehiculosService', () => {
       expect(res.success).toBe(true);
       const [pathSubido] = upload.mock.calls[0];
       expect(pathSubido).toMatch(/^v7\/.+\.jpg$/);
-      expect(update).toHaveBeenCalledWith({ foto_url: pathSubido });
-      expect(updateEq).toHaveBeenCalledWith('id', 'v7');
+      expect(mockDb.rpc).toHaveBeenCalledWith('agregar_foto_vehiculo', { p_vehiculo_id: 'v7', p_ruta: pathSubido });
+      expect(update).not.toHaveBeenCalled();
       expect(res.fotoUrl).toBe('https://storage.test/v7');
     });
 
