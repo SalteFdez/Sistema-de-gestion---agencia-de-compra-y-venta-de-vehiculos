@@ -15,12 +15,14 @@ import { MoverPlataView } from './MoverPlataView';
 import { PasarPlataView } from './PasarPlataView';
 import { PendientesAsignarView } from './PendientesAsignarView';
 import { AsignarGastoView } from './AsignarGastoView';
+import { GananciaMensualView } from './GananciaMensualView';
+import { GananciaDetalleMesView } from './GananciaDetalleMesView';
 import { comprimirFotoEnNavegador } from '../lib/vehiculos/comprimir-foto';
 import { CuotasPorCobrarView, contarVencidas } from './CuotasPorCobrarView';
 import { CobrarCuotaView } from './CobrarCuotaView';
 import { formatMoney } from '../lib/format/money';
 import { MovimientoSocioView } from './MovimientoSocioView';
-import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion, PendientesResult, PendienteAsignar, CuotaPorCobrar } from '../lib/vehiculos/vehiculos-service';
+import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion, PendientesResult, PendienteAsignar, CuotaPorCobrar, MesGanancia, DetalleMesGanancia } from '../lib/vehiculos/vehiculos-service';
 import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
@@ -48,7 +50,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<
-    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos' | 'mover_plata' | 'pasar_plata' | 'aporte_socio' | 'retiro_socio' | 'pendientes' | 'asignar_gasto' | 'cuotas_por_cobrar' | 'cobrar_cuota'
+    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos' | 'mover_plata' | 'pasar_plata' | 'aporte_socio' | 'retiro_socio' | 'pendientes' | 'asignar_gasto' | 'cuotas_por_cobrar' | 'cobrar_cuota' | 'ganancia_mensual' | 'ganancia_mes'
   >('home');
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
   const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
@@ -58,6 +60,29 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   // Lo que se anula con la compra, para el aviso "¿Seguro?" del detalle
   const [vistaPreviaDetalle, setVistaPreviaDetalle] = useState<VistaPreviaAnulacion | undefined>(undefined);
   // Autos recibidos en la venta del detalle, para el aviso de anular la venta
+  // Ganancia por mes: la lista y el detalle de un mes
+  const [meses, setMeses] = useState<MesGanancia[]>([]);
+  const [mesDetalle, setMesDetalle] = useState<string | null>(null);
+  const [detalleMes, setDetalleMes] = useState<DetalleMesGanancia | null>(null);
+  const loadGananciaMensual = useCallback(async () => {
+    if (!vehiculosService) return;
+    try {
+      setMeses(await vehiculosService.listarGananciaMensual());
+    } catch {
+      setMeses([]);
+    }
+  }, [vehiculosService]);
+  const loadDetalleMes = useCallback(async (mes: string) => {
+    if (!vehiculosService) return;
+    setMesDetalle(mes);
+    setDetalleMes(null);
+    try {
+      setDetalleMes(await vehiculosService.detalleMesGanancia(mes));
+    } catch {
+      setDetalleMes(null);
+    }
+  }, [vehiculosService]);
+
   // Progreso de la subida de fotos desde el detalle
   const [progresoFotosDetalle, setProgresoFotosDetalle] = useState<{ hecho: number; total: number } | undefined>(undefined);
   // Cobros de cuotas ya hechos de la venta del detalle (salen de las cuentas si se anula)
@@ -415,6 +440,42 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               onCancel={() => setCurrentView('home')}
             />
           </div>
+        </main>
+      );
+    }
+
+    if (currentView === 'ganancia_mensual') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          <GananciaMensualView
+            meses={meses}
+            onVerMes={(mes) => {
+              void loadDetalleMes(mes);
+              setCurrentView('ganancia_mes');
+            }}
+            onVolver={() => setCurrentView('balances')}
+          />
+        </main>
+      );
+    }
+
+    if (currentView === 'ganancia_mes' && mesDetalle) {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+          {detalleMes ? (
+            <GananciaDetalleMesView
+              mes={mesDetalle}
+              detalle={detalleMes}
+              onVerVenta={(vehiculoId) => void abrirDetalle(vehiculoId)}
+              onIrPendientes={() => {
+                void loadPendientes();
+                setCurrentView('pendientes');
+              }}
+              onVolver={() => setCurrentView('ganancia_mensual')}
+            />
+          ) : (
+            <p className="text-sm text-gray-500">Cargando el mes…</p>
+          )}
         </main>
       );
     }
@@ -878,6 +939,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             porCobrar={porCobrar}
             errorPorCobrar={errorPorCobrar}
             proximasCuotas={cuotas}
+            onVerGananciaMensual={() => {
+              void loadGananciaMensual();
+              setCurrentView('ganancia_mensual');
+            }}
             totalDisponible={totalDisponible}
             cuentas={cuentas}
             inventario={inventario}

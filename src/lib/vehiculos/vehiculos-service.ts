@@ -41,6 +41,8 @@ export interface CargarStockResult {
 export interface Consulta extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
   eq: (col: string, value: unknown) => Consulta;
   ilike: (col: string, patron: string) => Consulta;
+  gte: (col: string, value: unknown) => Consulta;
+  lt: (col: string, value: unknown) => Consulta;
   in: (col: string, values: unknown[]) => Promise<{ data: unknown; error: { message: string } | null }>;
   order: (col: string, options: { ascending: boolean }) => Consulta;
   range: (desde: number, hasta: number) => Consulta;
@@ -254,6 +256,25 @@ export interface FotoVehiculo {
   orden: number;
   /** Es la foto principal (la del listado) */
   esPrincipal: boolean;
+}
+
+export interface DetalleMesGanancia {
+  ventas: Array<{ ventaId: string; fecha: string; codigo: string; vehiculoId: string; precio: number; costoReal: number; ganancia: number }>;
+  gastosGenerales: Array<{ fecha: string; categoria: string; descripcion: string | null; monto: number }>;
+  gastosSinAsignar: Array<{ gastoId: string; fecha: string; proveedor: string | null; categoria: string; descripcion: string | null; pendiente: number }>;
+  ingresos: Array<{ fecha: string; categoria: string; descripcion: string | null; monto: number }>;
+}
+
+export interface MesGanancia {
+  /** Primer día del mes, AAAA-MM-01 */
+  mes: string;
+  ventas: number;
+  cantidadVendidos: number;
+  costoVendido: number;
+  gastosGenerales: number;
+  gastosSinAsignar: number;
+  ingresos: number;
+  ganancia: number;
 }
 
 export interface AgregarFotosResult {
@@ -1068,6 +1089,119 @@ export class VehiculosService {
       if (va !== vb) return va - vb;
       return a.vencimiento.localeCompare(b.vencimiento);
     });
+  }
+
+  /** De dónde sale la ganancia de un mes: ventas, gastos generales, sin asignar e ingresos. `mes` es AAAA-MM-01. */
+  async detalleMesGanancia(mes: string): Promise<DetalleMesGanancia> {
+    const [anio, m] = mes.split('-').map(Number);
+    const desde = mes;
+    const hasta = m === 12
+      ? `${anio + 1}-01-01`
+      : `${anio}-${String(m + 1).padStart(2, '0')}-01`;
+
+    const { data: dVentas, error: eVentas } = await this.db
+      .from('ventas')
+      .select('id, vehiculo_id, fecha, precio_total, anulada, vehiculo:vehiculos(codigo)')
+      .eq('anulada', false)
+      .gte('fecha', desde)
+      .lt('fecha', hasta);
+    if (eVentas) throw new Error(eVentas.message);
+    const ventasMes = (Array.isArray(dVentas) ? dVentas : []) as Array<{
+      id: string; vehiculo_id: string; fecha: string; precio_total: number | string; vehiculo: { codigo: string } | null;
+    }>;
+
+    const idsVentas = ventasMes.map((v) => v.id);
+    const { data: dGan, error: eGan } = idsVentas.length > 0
+      ? await this.db.from('v_ganancia_venta').select('venta_id, costo_real, ganancia').in('venta_id', idsVentas)
+      : { data: [], error: null };
+    if (eGan) throw new Error(eGan.message);
+    const ganPorVenta = new Map(
+      ((Array.isArray(dGan) ? dGan : []) as Array<{ venta_id: string; costo_real: number | string; ganancia: number | string }>)
+        .map((g) => [g.venta_id, g])
+    );
+
+    const { data: dGen, error: eGen } = await this.db
+      .from('gastos')
+      .select('fecha, descripcion, monto_total, alcance, anulado, categoria:categorias(nombre)')
+      .eq('alcance', 'general')
+      .eq('anulado', false)
+      .gte('fecha', desde)
+      .lt('fecha', hasta);
+    if (eGen) throw new Error(eGen.message);
+
+    const { data: dSin, error: eSin } = await this.db
+      .from('v_gastos_sin_asignar')
+      .select('gasto_id, fecha, descripcion, pendiente, categoria_nombre, proveedor_nombre')
+      .gte('fecha', desde)
+      .lt('fecha', hasta);
+    if (eSin) throw new Error(eSin.message);
+
+    const { data: dIng, error: eIng } = await this.db
+      .from('movimientos')
+      .select('fecha, descripcion, monto, tipo, anulado, categoria:categorias(nombre)')
+      .eq('tipo', 'ingreso_otro')
+      .eq('anulado', false)
+      .gte('fecha', desde)
+      .lt('fecha', hasta);
+    if (eIng) throw new Error(eIng.message);
+
+    const arr = <T>(d: unknown): T[] => (Array.isArray(d) ? d : []) as T[];
+    return {
+      ventas: ventasMes.map((v) => {
+        const g = ganPorVenta.get(v.id);
+        return {
+          ventaId: v.id,
+          fecha: v.fecha,
+          codigo: v.vehiculo?.codigo ?? '',
+          vehiculoId: v.vehiculo_id,
+          precio: Number(v.precio_total) || 0,
+          costoReal: Number(g?.costo_real) || 0,
+          ganancia: Number(g?.ganancia) || 0,
+        };
+      }),
+      gastosGenerales: arr<{ fecha: string; descripcion: string | null; monto_total: number | string; categoria: { nombre: string } | null }>(dGen).map((g) => ({
+        fecha: g.fecha,
+        categoria: g.categoria?.nombre ?? '',
+        descripcion: g.descripcion ?? null,
+        monto: Number(g.monto_total) || 0,
+      })),
+      gastosSinAsignar: arr<{ gasto_id: string; fecha: string; descripcion: string | null; pendiente: number | string; categoria_nombre: string | null; proveedor_nombre: string | null }>(dSin).map((g) => ({
+        gastoId: g.gasto_id,
+        fecha: g.fecha,
+        proveedor: g.proveedor_nombre ?? null,
+        categoria: g.categoria_nombre ?? '',
+        descripcion: g.descripcion ?? null,
+        pendiente: Number(g.pendiente) || 0,
+      })),
+      ingresos: arr<{ fecha: string; descripcion: string | null; monto: number | string; categoria: { nombre: string } | null }>(dIng).map((i) => ({
+        fecha: i.fecha,
+        categoria: i.categoria?.nombre ?? '',
+        descripcion: i.descripcion ?? null,
+        monto: Number(i.monto) || 0,
+      })),
+    };
+  }
+
+  /** Ganancia por mes, del más nuevo al más viejo. La vista se recalcula con el estado actual. */
+  async listarGananciaMensual(): Promise<MesGanancia[]> {
+    const { data, error } = await this.db
+      .from('v_ganancia_mensual')
+      .select('mes, ventas, cantidad_vendidos, costo_vendido, gastos_generales, gastos_sin_asignar, ingresos, ganancia')
+      .order('mes', { ascending: false });
+    if (error) {
+      throw new Error(error.message);
+    }
+    const filas = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
+    return filas.map((f) => ({
+      mes: String(f.mes),
+      ventas: Number(f.ventas) || 0,
+      cantidadVendidos: Number(f.cantidad_vendidos) || 0,
+      costoVendido: Number(f.costo_vendido) || 0,
+      gastosGenerales: Number(f.gastos_generales) || 0,
+      gastosSinAsignar: Number(f.gastos_sin_asignar) || 0,
+      ingresos: Number(f.ingresos) || 0,
+      ganancia: Number(f.ganancia) || 0,
+    }));
   }
 
   /** Lo que queda por cobrar de las ventas financiadas (no es dinero disponible). */

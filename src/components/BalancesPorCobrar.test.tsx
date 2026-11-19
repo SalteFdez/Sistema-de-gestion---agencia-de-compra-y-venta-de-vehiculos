@@ -1,7 +1,20 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { BalancesView } from './BalancesView';
+
+describe('BalancesView: ganancia por mes', () => {
+  it('tiene un botón que abre la ganancia por mes', () => {
+    const onVerGananciaMensual = vi.fn();
+    render(
+      <BalancesView totalDisponible={0} cuentas={[]} onVerGananciaMensual={onVerGananciaMensual} onVolver={vi.fn()} onIrACuentas={vi.fn()} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ganancia por mes' }));
+
+    expect(onVerGananciaMensual).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('BalancesView: próximas cuotas', () => {
   const cuota = (id: string, estado: string, vencimiento: string, comprador: string) => ({

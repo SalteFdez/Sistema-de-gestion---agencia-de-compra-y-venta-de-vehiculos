@@ -1156,6 +1156,84 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('detalleMesGanancia', () => {
+    // Fake con eq, gte, lt e in que filtra como la base
+    const builder = (filas: Array<Record<string, unknown>>): Record<string, unknown> => {
+      const b: Record<string, unknown> = {
+        eq: vi.fn((col: string, val: unknown) => builder(filas.filter((f) => f[col] === val))),
+        gte: vi.fn((col: string, val: unknown) => builder(filas.filter((f) => String(f[col]) >= String(val)))),
+        lt: vi.fn((col: string, val: unknown) => builder(filas.filter((f) => String(f[col]) < String(val)))),
+        in: vi.fn((col: string, vals: unknown[]) => Promise.resolve({ data: filas.filter((f) => vals.includes(f[col])), error: null })),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: filas, error: null }).then(ok, ko),
+      };
+      return b;
+    };
+
+    it('separa ventas, gastos generales, sin asignar e ingresos del mes, con sus totales', async () => {
+      const tablas: Record<string, Array<Record<string, unknown>>> = {
+        ventas: [
+          { id: 'ven1', vehiculo_id: 'v14', fecha: '2026-11-05', precio_total: 8000000, anulada: false, vehiculo: { codigo: 'MC-014' } },
+          { id: 'ven2', vehiculo_id: 'v9', fecha: '2026-10-20', precio_total: 1000000, anulada: false, vehiculo: { codigo: 'MC-009' } },
+          { id: 'ven3', vehiculo_id: 'v8', fecha: '2026-11-07', precio_total: 900000, anulada: true, vehiculo: { codigo: 'MC-008' } },
+        ],
+        v_ganancia_venta: [
+          { venta_id: 'ven1', costo_real: 5000000, ganancia: 3000000 },
+        ],
+        gastos: [
+          { fecha: '2026-11-03', monto_total: 500000, descripcion: 'Alquiler', alcance: 'general', anulado: false, categoria: { nombre: 'Alquiler' } },
+          { fecha: '2026-11-04', monto_total: 70000, descripcion: 'Anulado', alcance: 'general', anulado: true, categoria: { nombre: 'Varios' } },
+        ],
+        v_gastos_sin_asignar: [
+          { gasto_id: 'g9', fecha: '2026-11-06', pendiente: 200000, descripcion: null, categoria_nombre: 'Chapa', proveedor_nombre: 'Mecánico Juan' },
+        ],
+        movimientos: [
+          { fecha: '2026-11-08', monto: 100000, tipo: 'ingreso_otro', anulado: false, descripcion: 'Comisión', categoria: { nombre: 'Comisión' } },
+          { fecha: '2026-11-09', monto: 300000, tipo: 'aporte_socio', anulado: false, descripcion: 'Aporte', categoria: null },
+        ],
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => ({ select: vi.fn(() => builder(tablas[tabla] ?? [])) }));
+
+      const d = await new VehiculosService(mockDb).detalleMesGanancia('2026-11-01');
+
+      expect(d.ventas.map((v) => [v.codigo, v.precio, v.costoReal, v.ganancia])).toEqual([['MC-014', 8000000, 5000000, 3000000]]);
+      expect(d.gastosGenerales.map((g) => [g.descripcion, g.monto])).toEqual([['Alquiler', 500000]]);
+      expect(d.gastosSinAsignar.map((g) => [g.proveedor, g.pendiente])).toEqual([['Mecánico Juan', 200000]]);
+      expect(d.ingresos.map((i) => [i.descripcion, i.monto])).toEqual([['Comisión', 100000]]);
+    });
+  });
+
+  describe('listarGananciaMensual', () => {
+    it('lee la vista del más nuevo al más viejo y mapea cada mes', async () => {
+      const filas = [
+        { mes: '2026-11-01', ventas: 8000000, cantidad_vendidos: 2, costo_vendido: 5000000,
+          gastos_generales: 500000, gastos_sin_asignar: 200000, ingresos: 100000, ganancia: 2400000 },
+        { mes: '2026-10-01', ventas: 1000000, cantidad_vendidos: 1, costo_vendido: 1500000,
+          gastos_generales: 0, gastos_sin_asignar: 0, ingresos: 0, ganancia: -500000 },
+      ];
+      const order = vi.fn();
+      const consulta: Record<string, unknown> = {
+        order: vi.fn((col: string, opts: { ascending: boolean }) => {
+          order(col, opts);
+          return consulta;
+        }),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: filas, error: null }).then(ok, ko),
+      };
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn(() => consulta) });
+
+      const meses = await new VehiculosService(mockDb).listarGananciaMensual();
+
+      expect(mockDb.from).toHaveBeenCalledWith('v_ganancia_mensual');
+      expect(order).toHaveBeenCalledWith('mes', { ascending: false });
+      expect(meses[0]).toEqual({
+        mes: '2026-11-01', ventas: 8000000, cantidadVendidos: 2, costoVendido: 5000000,
+        gastosGenerales: 500000, gastosSinAsignar: 200000, ingresos: 100000, ganancia: 2400000,
+      });
+      expect(meses[1].ganancia).toBe(-500000);
+    });
+  });
+
   describe('listarVehiculos: patente para buscar', () => {
     it('cada vehículo del listado trae su patente (null si no tiene)', async () => {
       const filas = [

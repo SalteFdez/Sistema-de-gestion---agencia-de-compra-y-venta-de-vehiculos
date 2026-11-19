@@ -13,6 +13,8 @@ export interface BalancesViewProps {
   errorPorCobrar?: boolean;
   /** Cuotas con saldo: se muestran las próximas 3 */
   proximasCuotas?: CuotaPorCobrar[];
+  /** Abre la ganancia por mes */
+  onVerGananciaMensual?: () => void;
   onVolver: () => void;
   onIrACuentas: () => void;
 }
@@ -25,6 +27,7 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
   porCobrar = 0,
   errorPorCobrar = false,
   proximasCuotas = [],
+  onVerGananciaMensual,
   onVolver,
   onIrACuentas,
 }) => {
@@ -106,6 +109,17 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
               })}
           </ul>
         </section>
+      )}
+
+      {/* Acceso a la ganancia por mes */}
+      {onVerGananciaMensual && (
+        <button
+          type="button"
+          onClick={onVerGananciaMensual}
+          className="w-full py-3 mb-6 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-xl"
+        >
+          Ganancia por mes
+        </button>
       )}
 
       {/* Detalle por cuenta */}
