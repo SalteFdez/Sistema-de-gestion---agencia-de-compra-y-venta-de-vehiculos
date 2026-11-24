@@ -13,7 +13,11 @@ export interface PasarPlataViewProps {
   onVolver: () => void;
 }
 
-const botonCuenta = 'w-full py-3 bg-white border border-gray-300 text-gray-900 text-sm font-medium rounded-lg';
+// Mismo estilo de elegido que Registrar gasto
+const botonCuenta = (elegida: boolean) =>
+  `w-full py-3 border text-sm font-medium rounded-lg ${
+    elegida ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+  }`;
 
 export const PasarPlataView: React.FC<PasarPlataViewProps> = ({ cuentas, onRegistrar, onVolver }) => {
   const [origenId, setOrigenId] = useState<string | null>(null);
@@ -25,15 +29,21 @@ export const PasarPlataView: React.FC<PasarPlataViewProps> = ({ cuentas, onRegis
   const [aviso, setAviso] = useState<string | null>(null);
   // Resumen después de un pase exitoso
   const [resumen, setResumen] = useState<string | null>(null);
+  // Mientras se guarda, el botón queda deshabilitado con "Guardando…" (evita el doble registro)
+  const [guardando, setGuardando] = useState<boolean>(false);
 
   // Si falla, se muestra el error y el formulario conserva todo lo cargado
   const enviar = async (montoNumero: number) => {
+    if (guardando) return;
+    setGuardando(true);
     const res = await onRegistrar({
       origenId: origenId ?? '',
       destinoId: destinoId ?? '',
       monto: montoNumero,
       descripcion: descripcion.trim() || undefined,
     });
+    setGuardando(false);
+    setAviso(null);
     if (res && !res.success) {
       setError(res.error ?? 'No se pudo pasar la plata. No se pasó nada.');
       return;
@@ -100,9 +110,9 @@ export const PasarPlataView: React.FC<PasarPlataViewProps> = ({ cuentas, onRegis
               type="button"
               aria-pressed={origenId === c.id}
               onClick={() => setOrigenId(c.id)}
-              className={botonCuenta}
+              className={botonCuenta(origenId === c.id)}
             >
-              {c.nombre}
+              {c.nombre} · {formatMoney(c.saldo)}
             </button>
           ))}
         </div>
@@ -119,9 +129,9 @@ export const PasarPlataView: React.FC<PasarPlataViewProps> = ({ cuentas, onRegis
                 type="button"
                 aria-pressed={destinoId === c.id}
                 onClick={() => setDestinoId(c.id)}
-                className={botonCuenta}
+                className={botonCuenta(destinoId === c.id)}
               >
-                {c.nombre}
+                {c.nombre} · {formatMoney(c.saldo)}
               </button>
             ))}
         </div>
@@ -163,21 +173,20 @@ export const PasarPlataView: React.FC<PasarPlataViewProps> = ({ cuentas, onRegis
       {aviso ? (
         <button
           type="button"
-          onClick={() => {
-            setAviso(null);
-            enviar(Number(monto.replace(/\D/g, '')));
-          }}
-          className="w-full py-3 bg-red-600 text-white text-sm font-semibold rounded-lg"
+          disabled={guardando}
+          onClick={() => enviar(Number(monto.replace(/\D/g, '')))}
+          className="w-full py-3 bg-red-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
         >
-          Confirmar igual
+          {guardando ? 'Guardando…' : 'Confirmar igual'}
         </button>
       ) : (
         <button
           type="button"
+          disabled={guardando}
           onClick={confirmar}
-          className="w-full py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg"
+          className="w-full py-3 bg-blue-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
         >
-          Pasar plata
+          {guardando ? 'Guardando…' : 'Pasar plata'}
         </button>
       )}
     </div>

@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+
+/* Compatibilidad v4: el color de borde por defecto pasa a ser currentColor. */
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+  button:not(:disabled), [role=button]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}

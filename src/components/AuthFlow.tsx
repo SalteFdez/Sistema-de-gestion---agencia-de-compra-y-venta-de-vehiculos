@@ -759,6 +759,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             cuentas={cuentas}
             onVolver={() => setCurrentView('home')}
             onIrACuentas={() => setCurrentView('cuentas')}
+            onVerVehiculos={() => {
+              void loadVehiculosData();
+              setCurrentView('vehiculos');
+            }}
             onRegistrar={
               vehiculosService
                 ? async (params) => {
@@ -1086,7 +1090,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           </div>
 
           {/* Botón Movimientos (historial) */}
-          <div className="mb-6">
+          <div className="flex flex-col gap-3 mb-6">
             <button
               type="button"
               onClick={() => {

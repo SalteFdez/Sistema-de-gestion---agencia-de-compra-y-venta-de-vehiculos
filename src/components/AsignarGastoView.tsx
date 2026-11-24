@@ -26,6 +26,8 @@ export const AsignarGastoView: React.FC<AsignarGastoViewProps> = ({ gasto, vehic
     vehiculos.length > 0 ? [{ vehiculoId: vehiculos[0].id, monto: gasto.pendiente }] : []
   );
   const [error, setError] = useState<string | null>(null);
+  // Mientras se guarda, el botón queda deshabilitado con "Guardando…" (evita la doble asignación)
+  const [guardando, setGuardando] = useState<boolean>(false);
 
   const asignado = filas.reduce((acc, f) => acc + (f.monto || 0), 0);
   const valido =
@@ -35,12 +37,14 @@ export const AsignarGastoView: React.FC<AsignarGastoViewProps> = ({ gasto, vehic
     asignado <= gasto.pendiente;
 
   const confirmar = async () => {
-    if (!valido) return;
+    if (!valido || guardando) return;
+    setGuardando(true);
     const res = await onAsignar({
       gastoId: gasto.gastoId,
       pendiente: gasto.pendiente,
       asignaciones: filas.map((f) => ({ vehiculoId: f.vehiculoId, monto: f.monto })),
     });
+    setGuardando(false);
     if (res.success) {
       onVolver();
       return;
@@ -90,11 +94,11 @@ export const AsignarGastoView: React.FC<AsignarGastoViewProps> = ({ gasto, vehic
 
         <button
           type="button"
-          disabled={!valido}
+          disabled={!valido || guardando}
           onClick={() => void confirmar()}
           className="w-full py-2.5 bg-blue-600 disabled:bg-gray-300 text-white text-sm font-semibold rounded-xl"
         >
-          Confirmar asignación
+          {guardando ? 'Guardando…' : 'Confirmar asignación'}
         </button>
       </section>
     </div>

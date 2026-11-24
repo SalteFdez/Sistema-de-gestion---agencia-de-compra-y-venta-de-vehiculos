@@ -15,13 +15,17 @@ export const CobrarCuotaView: React.FC<CobrarCuotaViewProps> = ({ cuota, cuentas
   const [cuentaId, setCuentaId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resumen, setResumen] = useState<string | null>(null);
+  // Mientras se guarda, el botón queda deshabilitado con "Guardando…" (evita el doble cobro)
+  const [guardando, setGuardando] = useState<boolean>(false);
 
   const montoNumero = parseMoneyInput(monto);
   const valido = montoNumero > 0 && montoNumero <= cuota.saldo && cuentaId !== null;
 
   const confirmar = async () => {
-    if (!valido || cuentaId === null) return;
+    if (!valido || cuentaId === null || guardando) return;
+    setGuardando(true);
     const res = await onCobrar({ cuotaId: cuota.cuotaId, cuentaId, monto: montoNumero, saldo: cuota.saldo });
+    setGuardando(false);
     if (res.success) {
       setError(null);
       const cuenta = cuentas.find((c) => c.id === cuentaId)?.nombre ?? '';
@@ -118,11 +122,11 @@ export const CobrarCuotaView: React.FC<CobrarCuotaViewProps> = ({ cuota, cuentas
 
         <button
           type="button"
-          disabled={!valido}
+          disabled={!valido || guardando}
           onClick={() => void confirmar()}
           className="w-full py-2.5 bg-blue-600 disabled:bg-gray-300 text-white text-sm font-semibold rounded-xl"
         >
-          Confirmar cobro
+          {guardando ? 'Guardando…' : 'Confirmar cobro'}
         </button>
       </section>
     </div>

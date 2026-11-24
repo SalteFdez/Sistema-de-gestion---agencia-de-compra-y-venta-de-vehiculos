@@ -80,6 +80,8 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   const [aAnular, setAAnular] = useState<'vehiculo' | 'venta' | null>(null);
   const [motivo, setMotivo] = useState<string>('');
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
+  // Mientras anula, el botón queda deshabilitado con "Guardando…" (evita la doble anulación)
+  const [guardando, setGuardando] = useState<boolean>(false);
 
   const textoAviso = (): string[] => {
     if (aAnular === 'venta' && detalle.venta) {
@@ -137,8 +139,11 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   };
 
   const confirmarAnulacion = async () => {
+    if (guardando) return;
+    setGuardando(true);
     const accion = aAnular === 'venta' ? onAnularVenta : onAnularVehiculo;
     const res = (await accion?.(motivo.trim())) as { success: boolean; error?: string } | void;
+    setGuardando(false);
     if (res && !res.success) {
       // Nada quedó anulado: el diálogo sigue abierto con el motivo para reintentar
       setErrorAnular(res.error ?? 'No se pudo anular. No se anuló nada.');
@@ -237,7 +242,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             {detalle.pagos.map((p, i) => (
               <li key={i} className="flex justify-between">
                 <span>{p.cuentaNombre}</span>
-                <span className="font-medium">{formatMoney(p.monto)}</span>
+                <span className="font-medium whitespace-nowrap">{formatMoney(p.monto)}</span>
               </li>
             ))}
           </ul>
@@ -248,11 +253,11 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
         <dl className="text-sm text-gray-700 space-y-2">
           <div className="flex justify-between">
             <dt className="text-gray-500">Valor de ingreso</dt>
-            <dd>{formatMoney(detalle.valorIngreso)}</dd>
+            <dd className="whitespace-nowrap">{formatMoney(detalle.valorIngreso)}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-gray-500">Gastos asignados</dt>
-            <dd>{formatMoney(detalle.gastosAsignados)}</dd>
+            <dd className="whitespace-nowrap">{formatMoney(detalle.gastosAsignados)}</dd>
           </div>
         </dl>
         {(detalle.gastos ?? []).length > 0 ? (
@@ -263,7 +268,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
                   <span className="text-gray-500">{formatoFecha(g.fecha)}</span> · {g.categoria}
                   {g.descripcion ? ` · ${g.descripcion}` : ''}
                 </span>
-                <span className="font-medium">{formatMoney(g.monto)}</span>
+                <span className="font-medium whitespace-nowrap">{formatMoney(g.monto)}</span>
               </li>
             ))}
           </ul>
@@ -335,7 +340,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             )}
             <div className="flex justify-between">
               <dt className="text-gray-500">Precio de venta</dt>
-              <dd>{formatMoney(detalle.venta.precioVenta)}</dd>
+              <dd className="whitespace-nowrap">{formatMoney(detalle.venta.precioVenta)}</dd>
             </div>
           </dl>
 
@@ -344,7 +349,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             {detalle.venta.cobros.map((c, i) => (
               <li key={i} className="flex justify-between">
                 <span>{c.cuentaNombre}</span>
-                <span className="font-medium">{formatMoney(c.monto)}</span>
+                <span className="font-medium whitespace-nowrap">{formatMoney(c.monto)}</span>
               </li>
             ))}
           </ul>
@@ -360,7 +365,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
                   >
                     Permuta: {p.codigo} {p.marca} {p.modelo}
                   </button>
-                  <span className="font-medium">{formatMoney(p.valorPactado)}</span>
+                  <span className="font-medium whitespace-nowrap">{formatMoney(p.valorPactado)}</span>
                 </li>
               ))}
             </ul>
@@ -419,11 +424,11 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             </button>
             <button
               type="button"
-              disabled={motivo.trim() === ''}
+              disabled={motivo.trim() === '' || guardando}
               onClick={() => void confirmarAnulacion()}
               className="flex-1 py-2 bg-red-600 disabled:bg-gray-300 text-white text-sm rounded-lg"
             >
-              Sí, anular
+              {guardando ? 'Guardando…' : 'Sí, anular'}
             </button>
           </div>
           {errorAnular && (

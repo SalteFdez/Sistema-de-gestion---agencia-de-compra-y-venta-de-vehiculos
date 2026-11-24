@@ -16,7 +16,11 @@ export interface MovimientoSocioViewProps {
   onVolver: () => void;
 }
 
-const botonOpcion = 'w-full py-3 bg-white border border-gray-300 text-gray-900 text-sm font-medium rounded-lg';
+// Mismo estilo de elegido que Registrar gasto
+const botonOpcion = (elegida: boolean) =>
+  `w-full py-3 border text-sm font-medium rounded-lg ${
+    elegida ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+  }`;
 
 export const MovimientoSocioView: React.FC<MovimientoSocioViewProps> = ({
   modo,
@@ -35,15 +39,21 @@ export const MovimientoSocioView: React.FC<MovimientoSocioViewProps> = ({
   const [aviso, setAviso] = useState<string | null>(null);
   // Resumen después de un movimiento exitoso
   const [resumen, setResumen] = useState<string | null>(null);
+  // Mientras se guarda, el botón queda deshabilitado con "Guardando…" (evita el doble registro)
+  const [guardando, setGuardando] = useState<boolean>(false);
 
   // Si falla, se muestra el error y el formulario conserva todo lo cargado
   const enviar = async (montoNumero: number) => {
+    if (guardando) return;
+    setGuardando(true);
     const res = await onRegistrar({
       socioId,
       cuentaId: cuentaId ?? '',
       monto: montoNumero,
       descripcion: descripcion.trim() || undefined,
     });
+    setGuardando(false);
+    setAviso(null);
     if (res && !res.success) {
       setError(res.error ?? 'No se pudo registrar. No se registró nada.');
       return;
@@ -119,7 +129,7 @@ export const MovimientoSocioView: React.FC<MovimientoSocioViewProps> = ({
               type="button"
               aria-pressed={socioId === s.id}
               onClick={() => setSocioId(s.id)}
-              className={botonOpcion}
+              className={botonOpcion(socioId === s.id)}
             >
               {s.nombre}
             </button>
@@ -136,9 +146,9 @@ export const MovimientoSocioView: React.FC<MovimientoSocioViewProps> = ({
               type="button"
               aria-pressed={cuentaId === c.id}
               onClick={() => setCuentaId(c.id)}
-              className={botonOpcion}
+              className={botonOpcion(cuentaId === c.id)}
             >
-              {c.nombre}
+              {c.nombre} · {formatMoney(c.saldo)}
             </button>
           ))}
         </div>
@@ -180,21 +190,20 @@ export const MovimientoSocioView: React.FC<MovimientoSocioViewProps> = ({
       {aviso ? (
         <button
           type="button"
-          onClick={() => {
-            setAviso(null);
-            enviar(Number(monto.replace(/\D/g, '')));
-          }}
-          className="w-full py-3 bg-red-600 text-white text-sm font-semibold rounded-lg"
+          disabled={guardando}
+          onClick={() => enviar(Number(monto.replace(/\D/g, '')))}
+          className="w-full py-3 bg-red-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
         >
-          Confirmar igual
+          {guardando ? 'Guardando…' : 'Confirmar igual'}
         </button>
       ) : (
         <button
           type="button"
+          disabled={guardando}
           onClick={confirmar}
-          className="w-full py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg"
+          className="w-full py-3 bg-blue-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg"
         >
-          {modo === 'aporte' ? 'Registrar aporte' : 'Registrar retiro'}
+          {guardando ? 'Guardando…' : modo === 'aporte' ? 'Registrar aporte' : 'Registrar retiro'}
         </button>
       )}
     </div>

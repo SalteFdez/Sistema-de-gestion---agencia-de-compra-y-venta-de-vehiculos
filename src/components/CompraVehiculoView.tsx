@@ -37,6 +37,8 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
   const [avisoNegativo, setAvisoNegativo] = useState<Array<{ nombre: string; saldoResultante: number }> | null>(null);
   const [confirmacion, setConfirmacion] = useState<{ codigo: string; resumen: string } | null>(null);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  // Mientras se guarda, el botón queda deshabilitado con "Guardando…" (evita el doble registro)
+  const [guardando, setGuardando] = useState<boolean>(false);
   const [modelo, setModelo] = useState<string>('');
   const [anio, setAnio] = useState<string>('');
   const [precio, setPrecio] = useState<string>('');
@@ -57,7 +59,8 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
     datosCompletos && precioNumero > 0 && pagos.length > 0 && diferencia === 0 && montosValidos && cuentasSinRepetir;
 
   const registrar = async () => {
-    if (!onRegistrar) return;
+    if (!onRegistrar || guardando) return;
+    setGuardando(true);
     // Si la foto no se puede preparar, la compra igual se guarda sin foto.
     let foto: Blob | undefined;
     if (fotoElegida) {
@@ -84,6 +87,8 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
     } catch {
       res = { success: false, error: 'Sin conexión' };
     }
+    setGuardando(false);
+    setAvisoNegativo(null);
     if (res.success && res.codigo) {
       setErrorGuardado(null);
       const partes = pagos.map((p) => {
@@ -272,11 +277,11 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
 
           <button
             type="button"
-            disabled={!puedeConfirmar}
+            disabled={!puedeConfirmar || guardando}
             onClick={intentarConfirmar}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium text-sm rounded-xl shadow-sm"
           >
-            Confirmar
+            {guardando ? 'Guardando…' : 'Confirmar'}
           </button>
 
           {avisoNegativo && (
@@ -296,13 +301,11 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setAvisoNegativo(null);
-                    registrar();
-                  }}
-                  className="flex-1 py-2 bg-amber-600 text-white text-sm rounded-lg"
+                  disabled={guardando}
+                  onClick={() => void registrar()}
+                  className="flex-1 py-2 bg-amber-600 disabled:opacity-50 text-white text-sm rounded-lg"
                 >
-                  Confirmar igual
+                  {guardando ? 'Guardando…' : 'Confirmar igual'}
                 </button>
               </div>
             </div>

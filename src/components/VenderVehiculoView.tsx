@@ -75,6 +75,8 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   const [cobros, setCobros] = useState<FilaReparto[]>([]);
   const [confirmacion, setConfirmacion] = useState<Confirmacion | null>(null);
   const [errorVenta, setErrorVenta] = useState<string | null>(null);
+  // Mientras se guarda, el botón queda deshabilitado con "Guardando…" (evita el doble registro)
+  const [guardando, setGuardando] = useState<boolean>(false);
   // "¿Recibís un vehículo en parte de pago?": No por defecto
   const [recibe, setRecibe] = useState<boolean>(false);
   const [permutas, setPermutas] = useState<PermutaForm[]>([]);
@@ -162,7 +164,8 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   };
 
   const confirmar = async () => {
-    if (!elegido || !onRegistrar) return;
+    if (!elegido || !onRegistrar || guardando) return;
+    setGuardando(true);
     const res = await onRegistrar({
       vehiculoId: elegido.id,
       precio: precioNumero,
@@ -182,6 +185,7 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
         ? { monto: financiadoNumero, cantidadCuotas: cuotasNumero, fechaPrimera }
         : undefined,
     });
+    setGuardando(false);
     if (res.success && res.codigo) {
       setErrorVenta(null);
       const partes = cobros.map((c) => {
@@ -494,11 +498,11 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
 
           <button
             type="button"
-            disabled={!puedeConfirmar}
+            disabled={!puedeConfirmar || guardando}
             onClick={() => void confirmar()}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium text-sm rounded-xl shadow-sm"
           >
-            Confirmar
+            {guardando ? 'Guardando…' : 'Confirmar'}
           </button>
         </section>
       ) : (

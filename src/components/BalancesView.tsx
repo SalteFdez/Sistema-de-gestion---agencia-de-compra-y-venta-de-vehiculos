@@ -103,7 +103,7 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
                 return (
                   <li key={c.cuotaId} className={`text-sm flex justify-between ${c.estado === 'vencida' ? 'text-red-700' : 'text-gray-800'}`}>
                     <span>{`${dia}/${mes}/${anio} · ${c.comprador ?? 'Sin comprador'}`}</span>
-                    <span className="font-medium">{formatMoney(c.saldo)}</span>
+                    <span className="font-medium whitespace-nowrap">{formatMoney(c.saldo)}</span>
                   </li>
                 );
               })}
@@ -163,7 +163,7 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
                     {cuenta.tipo}
                   </span>
                 </div>
-                <div className="text-base font-bold text-gray-900">
+                <div className="text-base font-bold text-gray-900 whitespace-nowrap">
                   {formatMoney(cuenta.saldo)}
                 </div>
               </div>

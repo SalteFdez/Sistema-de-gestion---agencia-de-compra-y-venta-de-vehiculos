@@ -98,15 +98,19 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   const [avisoNegativo, setAvisoNegativo] = useState<Array<{ nombre: string; saldoResultante: number }> | null>(null);
   const [resumen, setResumen] = useState<string | null>(null);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+  // Mientras se guarda, el botón queda deshabilitado con "Guardando…" (evita el doble registro)
+  const [guardando, setGuardando] = useState<boolean>(false);
 
   const enviarIngreso = async () => {
-    if (!puedeConfirmar || !onRegistrarIngreso || categoriaId === null || cuentaId === null) return;
+    if (!puedeConfirmar || !onRegistrarIngreso || categoriaId === null || cuentaId === null || guardando) return;
+    setGuardando(true);
     const res = await onRegistrarIngreso({
       monto: montoNumero,
       categoriaId,
       cuentaId,
       descripcion: descripcion.trim() || undefined,
     });
+    setGuardando(false);
     if (res.success) {
       setErrorGuardado(null);
       const catNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
@@ -121,6 +125,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
 
   const enviarRepartido = async () => {
     if (!puedeConfirmar || !onRegistrarRepartido || categoriaId === null || cuentaId === null) return;
+    setGuardando(true);
     const res = await onRegistrarRepartido({
       monto: montoNumero,
       categoriaId,
@@ -129,6 +134,8 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
       asignaciones: filasVarios.map((f) => ({ vehiculoId: f.vehiculoId, monto: f.monto })),
       proveedorId: proveedor?.id ?? null,
     });
+    setGuardando(false);
+    setAvisoNegativo(null);
     if (res.success) {
       setErrorGuardado(null);
       const catNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
@@ -149,11 +156,13 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   };
 
   const enviar = async () => {
+    if (guardando) return;
     if (alcance === 'varios') {
       await enviarRepartido();
       return;
     }
     if (!puedeConfirmar || !onRegistrar || categoriaId === null || cuentaId === null) return;
+    setGuardando(true);
     const res = await onRegistrar({
       monto: montoNumero,
       categoriaId,
@@ -162,6 +171,8 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
       vehiculoId: alcance === 'vehiculo' ? vehiculoId : null,
       proveedorId: alcance === 'vehiculo' ? (proveedor?.id ?? null) : null,
     });
+    setGuardando(false);
+    setAvisoNegativo(null);
     if (res.success) {
       setErrorGuardado(null);
       const catNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
@@ -448,11 +459,11 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
 
         <button
           type="button"
-          disabled={!puedeConfirmar}
+          disabled={!puedeConfirmar || guardando}
           onClick={intentarConfirmar}
           className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium text-sm rounded-xl shadow-sm"
         >
-          Confirmar
+          {guardando ? 'Guardando…' : 'Confirmar'}
         </button>
 
         {avisoNegativo && (
@@ -472,13 +483,11 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setAvisoNegativo(null);
-                  enviar();
-                }}
-                className="flex-1 py-2 bg-amber-600 text-white text-sm rounded-lg"
+                disabled={guardando}
+                onClick={() => void enviar()}
+                className="flex-1 py-2 bg-amber-600 disabled:opacity-50 text-white text-sm rounded-lg"
               >
-                Confirmar igual
+                {guardando ? 'Guardando…' : 'Confirmar igual'}
               </button>
             </div>
           </div>

@@ -90,6 +90,8 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
   const [aAnular, setAAnular] = useState<MovimientoItem | null>(null);
   const [motivo, setMotivo] = useState<string>('');
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
+  // Mientras anula, el botón queda deshabilitado con "Guardando…" (evita la doble anulación)
+  const [guardando, setGuardando] = useState<boolean>(false);
   // Autos y montos afectados por anular un gasto repartido (null mientras se cargan)
   const [afectados, setAfectados] = useState<Array<{ codigo: string; monto: number }> | null>(null);
 
@@ -103,8 +105,10 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
   };
 
   const confirmarAnulacion = async () => {
-    if (!aAnular || !onAnular) return;
+    if (!aAnular || !onAnular || guardando) return;
+    setGuardando(true);
     const res = (await onAnular(aAnular, motivo.trim())) as { success: boolean; error?: string } | void;
+    setGuardando(false);
     if (res && !res.success) {
       // Nada quedó anulado: el diálogo sigue abierto con el motivo para reintentar
       setErrorAnular(res.error ?? 'No se pudo anular. No se anuló nada.');
@@ -222,11 +226,11 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
             </button>
             <button
               type="button"
-              disabled={motivo.trim() === ''}
+              disabled={motivo.trim() === '' || guardando}
               onClick={() => void confirmarAnulacion()}
               className="flex-1 py-2 bg-red-600 disabled:bg-gray-300 text-white text-sm rounded-lg"
             >
-              Anular movimiento
+              {guardando ? 'Guardando…' : 'Anular movimiento'}
             </button>
           </div>
           {errorAnular && (

@@ -463,6 +463,56 @@ describe('AuthFlow UI Integration', () => {
     });
   });
 
+  describe('Ver vehículos después de comprar', () => {
+    it('desde la confirmación de compra, "Ver vehículos" lleva al listado recargado con el auto nuevo', async () => {
+      mockAuthService = {
+        isDeviceLinked: vi.fn().mockReturnValue(true),
+        getLinkedUser: vi.fn().mockReturnValue({ id: 'u1', email: 'agustin@machoman.local', nombre: 'Agustín Fernandez' }),
+        validatePin: vi.fn().mockResolvedValue(true),
+      };
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      let comprado = false;
+      const autoNuevo = { id: 'v20', codigo: 'MC-020', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, patente: null, estado: 'en_stock', fotoUrl: null, fechaIngreso: '2026-11-24' };
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockImplementation(async () => (comprado ? [autoNuevo] : [])),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        listarMovimientos: vi.fn().mockResolvedValue([]),
+        registrarCompra: vi.fn().mockImplementation(async () => {
+          comprado = true;
+          return { success: true, codigo: 'MC-020' };
+        }),
+      };
+      const cuentasService = {
+        obtenerCuentasConSaldo: vi.fn().mockResolvedValue([{ id: 'c1', nombre: 'Caja efectivo', tipo: 'efectivo', saldo: 5000000 }]),
+        obtenerDineroDisponible: vi.fn().mockResolvedValue(5000000),
+        crearCuenta: vi.fn(),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          cuentasService={cuentasService as unknown as any}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
+      fireEvent.change(await screen.findByLabelText(/marca/i), { target: { value: 'Fiat' } });
+      fireEvent.change(screen.getByLabelText(/modelo/i), { target: { value: 'Uno' } });
+      fireEvent.change(screen.getByLabelText(/año/i), { target: { value: '2010' } });
+      fireEvent.change(screen.getByLabelText(/precio de compra/i), { target: { value: '1500000' } });
+      fireEvent.click(screen.getByRole('button', { name: /^confirmar$/i }));
+
+      expect(await screen.findByTestId('codigo-compra')).toHaveTextContent('MC-020');
+      fireEvent.click(screen.getByRole('button', { name: /ver vehículos/i }));
+
+      expect(await screen.findByRole('heading', { name: /vehículos/i })).toBeInTheDocument();
+      expect(await screen.findByText(/MC-020/)).toBeInTheDocument();
+    });
+  });
+
   describe('Buscar vehículos sobrevive al detalle', () => {
     it('la búsqueda y el filtro siguen como estaban al entrar a un auto y volver', async () => {
       mockAuthService = {

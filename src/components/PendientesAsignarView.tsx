@@ -40,7 +40,7 @@ export const PendientesAsignarView: React.FC<PendientesAsignarViewProps> = ({ pe
               <section key={g.proveedorId ?? 'sin-proveedor'} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
                 <div className="flex justify-between items-baseline mb-2">
                   <h2 className="text-sm font-semibold text-gray-900">{g.proveedorNombre}</h2>
-                  <span className="text-sm font-medium text-gray-800">{formatMoney(g.subtotal)}</span>
+                  <span className="text-sm font-medium text-gray-800 whitespace-nowrap">{formatMoney(g.subtotal)}</span>
                 </div>
                 <div className="space-y-2">
                   {g.gastos.map((gasto) => (
@@ -56,8 +56,8 @@ export const PendientesAsignarView: React.FC<PendientesAsignarViewProps> = ({ pe
                       </div>
                       {gasto.descripcion && <p className="text-sm text-gray-900 mt-1">{gasto.descripcion}</p>}
                       <div className="flex justify-between mt-1 text-sm">
-                        <span className="text-gray-700">{formatMoney(gasto.montoTotal)}</span>
-                        <span className="font-medium text-amber-800">Falta asignar {formatMoney(gasto.pendiente)}</span>
+                        <span className="text-gray-700 whitespace-nowrap">{formatMoney(gasto.montoTotal)}</span>
+                        <span className="font-medium text-amber-800 whitespace-nowrap">Falta asignar {formatMoney(gasto.pendiente)}</span>
                       </div>
                     </button>
                   ))}

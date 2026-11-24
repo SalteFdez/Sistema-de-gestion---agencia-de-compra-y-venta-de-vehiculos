@@ -25,7 +25,7 @@ const Seccion: React.FC<{ titulo: string; total: number; children: React.ReactNo
   <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-4">
     <div className="flex justify-between items-baseline mb-2">
       <h2 className="text-sm font-semibold text-gray-900">{titulo}</h2>
-      <span className="text-sm font-medium text-gray-800">{`Total ${formatMoney(total)}`}</span>
+      <span className="text-sm font-medium text-gray-800 whitespace-nowrap">{`Total ${formatMoney(total)}`}</span>
     </div>
     {children}
   </section>
@@ -69,7 +69,7 @@ export const GananciaDetalleMesView: React.FC<GananciaDetalleMesViewProps> = ({
               >
                 <div className="flex justify-between">
                   <span className="font-semibold text-blue-700">{`${v.codigo} · ${diaMes(v.fecha)}`}</span>
-                  <span>{formatMoney(v.precio)}</span>
+                  <span className="whitespace-nowrap">{formatMoney(v.precio)}</span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-600 mt-1">
                   <span>{`Costo ${formatMoney(v.costoReal)}`}</span>
@@ -86,7 +86,7 @@ export const GananciaDetalleMesView: React.FC<GananciaDetalleMesViewProps> = ({
           {detalle.gastosGenerales.map((g, i) => (
             <li key={i} className="flex justify-between">
               <span>{`${diaMes(g.fecha)} · ${g.categoria}${g.descripcion ? ` · ${g.descripcion}` : ''}`}</span>
-              <span>{formatMoney(g.monto)}</span>
+              <span className="whitespace-nowrap">{formatMoney(g.monto)}</span>
             </li>
           ))}
         </ul>
@@ -97,7 +97,7 @@ export const GananciaDetalleMesView: React.FC<GananciaDetalleMesViewProps> = ({
           {detalle.gastosSinAsignar.map((g) => (
             <li key={g.gastoId} className="flex justify-between">
               <span>{`${diaMes(g.fecha)} · ${g.proveedor ?? 'Sin proveedor'} · ${g.categoria}`}</span>
-              <span>{formatMoney(g.pendiente)}</span>
+              <span className="whitespace-nowrap">{formatMoney(g.pendiente)}</span>
             </li>
           ))}
         </ul>
@@ -117,7 +117,7 @@ export const GananciaDetalleMesView: React.FC<GananciaDetalleMesViewProps> = ({
           {detalle.ingresos.map((i, idx) => (
             <li key={idx} className="flex justify-between">
               <span>{`${diaMes(i.fecha)} · ${i.categoria}${i.descripcion ? ` · ${i.descripcion}` : ''}`}</span>
-              <span>{formatMoney(i.monto)}</span>
+              <span className="whitespace-nowrap">{formatMoney(i.monto)}</span>
             </li>
           ))}
         </ul>
