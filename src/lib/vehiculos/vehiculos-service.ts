@@ -492,6 +492,8 @@ export interface DetalleVehiculo {
   gastos: GastoDetalle[];
   /** Si entró por permuta: código del auto vendido en cuya venta entró */
   permutaDeVenta?: string | null;
+  /** Id de ese auto vendido, para ir a su detalle desde el link */
+  permutaDeVentaId?: string | null;
   /** Galería de fotos vigentes, en orden de llegada */
   fotos?: FotoVehiculo[];
   /** Presente solo si el vehículo fue anulado (se llega desde el historial) */
@@ -1583,17 +1585,19 @@ export class VehiculosService {
 
     // Si entró por permuta, de qué venta salió
     let permutaDeVenta: string | null = null;
+    let permutaDeVentaId: string | null = null;
     if (fila.origen === 'permuta') {
       const { data: deQueVenta, error: errorDeQueVenta } = await this.db
         .from('venta_permutas')
-        .select('vehiculo_recibido_id, venta:ventas(vehiculo:vehiculos(codigo))')
+        .select('vehiculo_recibido_id, venta:ventas(vehiculo:vehiculos(id, codigo))')
         .eq('vehiculo_recibido_id', id)
         .maybeSingle();
       if (errorDeQueVenta) {
         return { success: false, error: errorDeQueVenta.message };
       }
-      const r = deQueVenta as { venta: { vehiculo: { codigo: string } | null } | null } | null;
+      const r = deQueVenta as { venta: { vehiculo: { id: string; codigo: string } | null } | null } | null;
       permutaDeVenta = r?.venta?.vehiculo?.codigo ?? null;
+      permutaDeVentaId = r?.venta?.vehiculo?.id ?? null;
     }
     if (fila.estado === 'vendido') {
       const { data: filaVenta, error: errorVenta } = await this.db
@@ -1738,6 +1742,7 @@ export class VehiculosService {
         venta,
         gastos,
         permutaDeVenta,
+        permutaDeVentaId,
         anulado: fila.anulado === true
           ? {
               por: ((fila.anulador as { nombre: string } | null)?.nombre) ?? null,

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import type { DetalleVehiculo, VistaPreviaAnulacion } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
+import { diasEnStock, textoDiasEnStock } from '../lib/vehiculos/dias-en-stock';
 import { GaleriaFotos } from './GaleriaFotos';
 import { Encabezado } from './ui/Encabezado';
 import { Boton } from './ui/Boton';
 import { Dialogo } from './ui/Dialogo';
 import { BadgeEstado } from './ui/BadgeEstado';
+import { Seccion } from './ui/Seccion';
 
 export interface VehiculoDetalleViewProps {
   detalle: DetalleVehiculo;
@@ -150,6 +152,23 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
     setErrorAnular(null);
     setAAnular(null);
   };
+
+  // Vendido: cuenta hasta la venta. En stock o anulado: hasta hoy.
+  const fechaVenta = detalle.estado === 'vendido' && !detalle.anulado && detalle.venta ? detalle.venta.fecha : undefined;
+  const textoDias = textoDiasEnStock(diasEnStock({ fechaIngreso: detalle.fechaIngreso, fechaVenta }));
+  const puedeVender = !!onVender && detalle.estado === 'en_stock' && !detalle.anulado;
+  // Permuta: el origen lleva al auto vendido en cuya venta entró
+  const idVentaOrigen = detalle.permutaDeVentaId ?? null;
+  // Anular: venta si se vendió; si no, alta o compra (un auto que entró por permuta no se anula solo)
+  const anulaVenta = detalle.estado === 'vendido';
+  const puedeAnular = !detalle.anulado && (anulaVenta ? !!onAnularVenta : !!onAnularVehiculo && detalle.origen !== 'permuta');
+  const etiquetaAnular = anulaVenta
+    ? 'Anular venta'
+    : detalle.origen === 'inventario_inicial'
+      ? 'Anular alta'
+      : 'Anular compra';
+  const financiacion = detalle.venta?.financiacion;
+
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
       <Encabezado titulo="Detalle del vehículo" onVolver={onVolver} />
@@ -159,12 +178,6 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
           Anulado por {detalle.anulado.por}
           {detalle.anulado.el ? ` el ${diaMesBA(detalle.anulado.el)}` : ''}
           {detalle.anulado.motivo ? ` · Motivo: ${detalle.anulado.motivo}` : ''}
-        </p>
-      )}
-
-      {detalle.origen === 'permuta' && detalle.permutaDeVenta && (
-        <p className="mb-3 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-3">
-          Permuta en la venta de {detalle.permutaDeVenta}
         </p>
       )}
 
@@ -196,20 +209,81 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
           <h2 className="text-base font-semibold text-gray-900">
             {detalle.marca} {detalle.modelo}
           </h2>
-          <p className="text-sm text-gray-600">
-            {detalle.anio}
-            {detalle.color ? ` · ${detalle.color}` : ''}
-            {detalle.patente ? ` · ${detalle.patente}` : ''}
-          </p>
+          <p className="text-sm text-gray-600">{detalle.anio}</p>
+          <p className="text-sm font-medium text-gray-700">{textoDias}</p>
 
-          <dl className="text-sm text-gray-700 space-y-1 pt-2">
+          {/* Número clave: costo real en stock, ganancia o pérdida si se vendió; nada si está anulado */}
+          {!detalle.anulado && detalle.estado === 'vendido' && detalle.venta ? (
+            detalle.venta.ganancia < 0 ? (
+              <div data-testid="numero-clave" className="pt-2">
+                <span className="text-xs uppercase font-semibold text-red-600 tracking-wider">Pérdida</span>
+                <div className="text-3xl font-extrabold text-red-600 mt-1 whitespace-nowrap">
+                  {formatMoney(detalle.venta.ganancia)}
+                </div>
+              </div>
+            ) : (
+              <div data-testid="numero-clave" className="pt-2">
+                <span className="text-xs uppercase font-semibold text-green-700 tracking-wider">Ganancia</span>
+                <div className="text-3xl font-extrabold text-green-700 mt-1 whitespace-nowrap">
+                  {formatMoney(detalle.venta.ganancia)}
+                </div>
+              </div>
+            )
+          ) : !detalle.anulado && detalle.estado !== 'vendido' ? (
+            <div data-testid="numero-clave" className="pt-2">
+              <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">Costo real</span>
+              <div data-testid="costo-real" className="text-3xl font-extrabold text-gray-900 mt-1 whitespace-nowrap">
+                {formatMoney(detalle.costoReal)}
+              </div>
+              {detalle.valorIngreso === 0 && <p className="text-xs text-amber-700 mt-1">Costo desconocido</p>}
+            </div>
+          ) : null}
+        </div>
+      </article>
+
+      {!detalle.anulado && (puedeVender || onAgregarGasto) && (
+        <div data-testid="acciones" className="mt-4 flex gap-3">
+          {puedeVender && (
+            <div className="flex-1">
+              <Boton anchoCompleto onClick={onVender}>
+                Vender
+              </Boton>
+            </div>
+          )}
+          {onAgregarGasto && (
+            <div className="flex-1">
+              <Boton anchoCompleto variante="secundario" onClick={onAgregarGasto}>
+                Agregar gasto
+              </Boton>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white border border-gray-200 rounded-2xl px-4 shadow-sm mt-4">
+        <Seccion titulo="Datos" abierta>
+          <dl className="text-sm text-gray-700 space-y-1">
             <div className="flex justify-between">
               <dt className="text-gray-500">Fecha de ingreso</dt>
               <dd>{formatoFecha(detalle.fechaIngreso)}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-gray-500">Origen</dt>
-              <dd>{ETIQUETA_ORIGEN[detalle.origen]}</dd>
+              <dd>
+                {detalle.origen === 'permuta' && detalle.permutaDeVenta && idVentaOrigen ? (
+                  <button
+                    type="button"
+                    onClick={() => onVerRecibido?.(idVentaOrigen)}
+                    className="text-right text-blue-700 hover:underline"
+                  >
+                    Permuta en la venta de {detalle.permutaDeVenta}
+                  </button>
+                ) : detalle.origen === 'permuta' && detalle.permutaDeVenta ? (
+                  `Permuta en la venta de ${detalle.permutaDeVenta}`
+                ) : (
+                  ETIQUETA_ORIGEN[detalle.origen]
+                )}
+              </dd>
             </div>
             {detalle.vendedor && (
               <div className="flex justify-between">
@@ -217,172 +291,149 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
                 <dd>{detalle.vendedor}</dd>
               </div>
             )}
-          </dl>
-        </div>
-      </article>
-
-      <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mt-4">
-        <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Cómo se pagó</h2>
-        {detalle.pagos.length === 0 ? (
-          <p className="text-sm text-gray-600">Cargado como stock existente, sin pagos registrados</p>
-        ) : (
-          <ul className="space-y-1 text-sm text-gray-800">
-            {detalle.pagos.map((p, i) => (
-              <li key={i} className="flex justify-between">
-                <span>{p.cuentaNombre}</span>
-                <span className="font-medium whitespace-nowrap">{formatMoney(p.monto)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mt-4">
-        <dl className="text-sm text-gray-700 space-y-2">
-          <div className="flex justify-between">
-            <dt className="text-gray-500">Valor de ingreso</dt>
-            <dd className="whitespace-nowrap">{formatMoney(detalle.valorIngreso)}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-gray-500">Gastos asignados</dt>
-            <dd className="whitespace-nowrap">{formatMoney(detalle.gastosAsignados)}</dd>
-          </div>
-        </dl>
-        {(detalle.gastos ?? []).length > 0 ? (
-          <ul className="mt-3 space-y-1 text-sm text-gray-800">
-            {(detalle.gastos ?? []).map((g, i) => (
-              <li key={i} className="flex justify-between gap-2">
-                <span>
-                  <span className="text-gray-500">{formatoFecha(g.fecha)}</span> · {g.categoria}
-                  {g.descripcion ? ` · ${g.descripcion}` : ''}
-                </span>
-                <span className="font-medium whitespace-nowrap">{formatMoney(g.monto)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          detalle.gastosAsignados === 0 && (
-            <p className="text-xs text-gray-500 mt-1">Todavía no hay gastos cargados</p>
-          )
-        )}
-        {detalle.anulado ? null : detalle.estado === 'vendido' ? (
-          onAnularVenta && (
-            <div className="mt-2">
-              <Boton anchoCompleto variante="peligroBorde" onClick={() => {
-                setMotivo('');
-                setAAnular('venta');
-              }}>
-                Anular venta
-              </Boton>
-            </div>
-          )
-        ) : (
-          onAnularVehiculo && detalle.origen !== 'permuta' && (
-            <div className="mt-2">
-              <Boton anchoCompleto variante="peligroBorde" onClick={() => {
-                setMotivo('');
-                setAAnular('vehiculo');
-              }}>
-                {detalle.origen === 'inventario_inicial' ? 'Anular alta' : 'Anular compra'}
-              </Boton>
-            </div>
-          )
-        )}
-
-        {onVender && detalle.estado === 'en_stock' && !detalle.anulado && (
-          <div className="mt-4">
-            <Boton anchoCompleto onClick={onVender}>
-              Vender
-            </Boton>
-          </div>
-        )}
-
-        {onAgregarGasto && !detalle.anulado && (
-          <div className="mt-4">
-            <Boton anchoCompleto variante="secundario" onClick={onAgregarGasto}>
-              Agregar gasto
-            </Boton>
-          </div>
-        )}
-
-        <div className="mt-4 pt-3 border-t border-gray-200">
-          <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">Costo real</span>
-          <div data-testid="costo-real" className="text-3xl font-extrabold text-gray-900 mt-1">
-            {formatMoney(detalle.costoReal)}
-          </div>
-          {detalle.valorIngreso === 0 && <p className="text-xs text-amber-700 mt-1">Costo desconocido</p>}
-        </div>
-      </section>
-
-      {detalle.venta && (
-        <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mt-4">
-          <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Venta</h2>
-          <dl className="text-sm text-gray-700 space-y-1">
-            <div className="flex justify-between">
-              <dt className="text-gray-500">Fecha de venta</dt>
-              <dd>{formatoFecha(detalle.venta.fecha)}</dd>
-            </div>
-            {detalle.venta.comprador && (
+            {detalle.patente && (
               <div className="flex justify-between">
-                <dt className="text-gray-500">Comprador</dt>
-                <dd>{detalle.venta.comprador}</dd>
+                <dt className="text-gray-500">Patente</dt>
+                <dd>{detalle.patente}</dd>
               </div>
             )}
+            {detalle.color && (
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Color</dt>
+                <dd>{detalle.color}</dd>
+              </div>
+            )}
+          </dl>
+        </Seccion>
+
+        {detalle.origen === 'compra' && (
+          <Seccion titulo="Compra">
+            <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Cómo se pagó</h3>
+            {detalle.pagos.length === 0 ? (
+              <p className="text-sm text-gray-600">Sin pagos registrados</p>
+            ) : (
+              <ul className="space-y-1 text-sm text-gray-800">
+                {detalle.pagos.map((p, i) => (
+                  <li key={i} className="flex justify-between">
+                    <span>{p.cuentaNombre}</span>
+                    <span className="font-medium whitespace-nowrap">{formatMoney(p.monto)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Seccion>
+        )}
+
+        <Seccion titulo="Gastos">
+          <dl className="text-sm text-gray-700 space-y-2">
             <div className="flex justify-between">
-              <dt className="text-gray-500">Precio de venta</dt>
-              <dd className="whitespace-nowrap">{formatMoney(detalle.venta.precioVenta)}</dd>
+              <dt className="text-gray-500">Valor de ingreso</dt>
+              <dd className="whitespace-nowrap">{formatMoney(detalle.valorIngreso)}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Gastos asignados</dt>
+              <dd className="whitespace-nowrap">{formatMoney(detalle.gastosAsignados)}</dd>
             </div>
           </dl>
-
-          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mt-3 mb-1">Cómo se cobró</h3>
-          <ul className="space-y-1 text-sm text-gray-800">
-            {detalle.venta.cobros.map((c, i) => (
-              <li key={i} className="flex justify-between">
-                <span>{c.cuentaNombre}</span>
-                <span className="font-medium whitespace-nowrap">{formatMoney(c.monto)}</span>
-              </li>
-            ))}
-          </ul>
-
-          {(detalle.venta.permutas ?? []).length > 0 && (
-            <ul className="space-y-1 text-sm text-gray-800 mt-1">
-              {(detalle.venta.permutas ?? []).map((p) => (
-                <li key={p.vehiculoId} className="flex justify-between">
-                  <button
-                    type="button"
-                    onClick={() => onVerRecibido?.(p.vehiculoId)}
-                    className="text-left text-blue-700 hover:underline"
-                  >
-                    Permuta: {p.codigo} {p.marca} {p.modelo}
-                  </button>
-                  <span className="font-medium whitespace-nowrap">{formatMoney(p.valorPactado)}</span>
+          {(detalle.gastos ?? []).length > 0 ? (
+            <ul className="mt-3 space-y-1 text-sm text-gray-800">
+              {(detalle.gastos ?? []).map((g, i) => (
+                <li key={i} className="flex justify-between gap-2">
+                  <span>
+                    <span className="text-gray-500">{formatoFecha(g.fecha)}</span> · {g.categoria}
+                    {g.descripcion ? ` · ${g.descripcion}` : ''}
+                  </span>
+                  <span className="font-medium whitespace-nowrap">{formatMoney(g.monto)}</span>
                 </li>
               ))}
             </ul>
+          ) : (
+            detalle.gastosAsignados === 0 && (
+              <p className="text-xs text-gray-500 mt-1">Todavía no hay gastos cargados</p>
+            )
           )}
+        </Seccion>
 
-          {detalle.venta.financiacion && (
-            <div className="mt-3 space-y-1">
+        {detalle.venta && (
+          <Seccion titulo="Venta">
+            <dl className="text-sm text-gray-700 space-y-1">
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Fecha de venta</dt>
+                <dd>{formatoFecha(detalle.venta.fecha)}</dd>
+              </div>
+              {detalle.venta.comprador && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Comprador</dt>
+                  <dd>{detalle.venta.comprador}</dd>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <dt className="text-gray-500">Precio de venta</dt>
+                <dd className="whitespace-nowrap">{formatMoney(detalle.venta.precioVenta)}</dd>
+              </div>
+            </dl>
+
+            <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mt-3 mb-1">Cómo se cobró</h3>
+            <ul className="space-y-1 text-sm text-gray-800">
+              {detalle.venta.cobros.map((c, i) => (
+                <li key={i} className="flex justify-between">
+                  <span>{c.cuentaNombre}</span>
+                  <span className="font-medium whitespace-nowrap">{formatMoney(c.monto)}</span>
+                </li>
+              ))}
+            </ul>
+
+            {(detalle.venta.permutas ?? []).length > 0 && (
+              <ul className="space-y-1 text-sm text-gray-800 mt-1">
+                {(detalle.venta.permutas ?? []).map((p) => (
+                  <li key={p.vehiculoId} className="flex justify-between">
+                    <button
+                      type="button"
+                      onClick={() => onVerRecibido?.(p.vehiculoId)}
+                      className="text-left text-blue-700 hover:underline"
+                    >
+                      Permuta: {p.codigo} {p.marca} {p.modelo}
+                    </button>
+                    <span className="font-medium whitespace-nowrap">{formatMoney(p.valorPactado)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Seccion>
+        )}
+
+        {financiacion && (
+          <Seccion titulo="Cuotas">
+            <div className="space-y-1">
               <p className="text-sm font-semibold text-gray-800">
-                {`Financiación ${formatMoney(detalle.venta.financiacion.monto)} en ${detalle.venta.financiacion.cantidadCuotas} cuotas`}
+                {`Financiación ${formatMoney(financiacion.monto)} en ${financiacion.cantidadCuotas} cuotas`}
               </p>
               <ul aria-label="Cuotas financiadas" className="text-sm text-gray-800 space-y-1">
-                {detalle.venta.financiacion.cuotas.map((c) => (
+                {financiacion.cuotas.map((c) => (
                   <li key={c.numero}>
                     {`${c.numero} · ${formatoFecha(c.fechaVencimiento)} · ${formatMoney(c.monto)} · ${c.estado === 'pendiente' ? 'Pendiente' : c.estado}`}
                   </li>
                 ))}
               </ul>
-              <p className="text-sm font-semibold text-amber-700">{`Falta cobrar ${formatMoney(detalle.venta.financiacion.faltaCobrar)}`}</p>
+              <p className="text-sm font-semibold text-amber-700">{`Falta cobrar ${formatMoney(financiacion.faltaCobrar)}`}</p>
             </div>
-          )}
+          </Seccion>
+        )}
+      </div>
 
-          {detalle.venta.ganancia < 0 ? (
-            <p className="text-lg font-bold text-red-600 mt-3">Pérdida {formatMoney(detalle.venta.ganancia)}</p>
-          ) : (
-            <p className="text-lg font-bold text-green-700 mt-3">Ganancia {formatMoney(detalle.venta.ganancia)}</p>
-          )}
-        </section>
+      {puedeAnular && (
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          <Boton
+            anchoCompleto
+            variante="peligroBorde"
+            onClick={() => {
+              setMotivo('');
+              setAAnular(anulaVenta ? 'venta' : 'vehiculo');
+            }}
+          >
+            {etiquetaAnular}
+          </Boton>
+        </div>
       )}
 
       {aAnular && (

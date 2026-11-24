@@ -1064,7 +1064,8 @@ describe('AuthFlow UI Integration', () => {
 
     fireEvent.click(await screen.findByText('MC-021'));
     // Esperamos el contenido ya cargado (el título también existe mientras carga)
-    expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
+    // Marcador de "detalle cargado": la sección Datos está en todos los autos (Compra solo en compras)
+    expect(await screen.findByRole('heading', { name: 'Datos' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /volver/i }));
 
@@ -1118,7 +1119,8 @@ describe('AuthFlow UI Integration', () => {
     expect(await screen.findByRole('img', { name: /fiat 147/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('img', { name: /fiat 147/i }));
-    expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
+    // Marcador de "detalle cargado": la sección Datos está en todos los autos (Compra solo en compras)
+    expect(await screen.findByRole('heading', { name: 'Datos' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /volver/i }));
 
@@ -1167,7 +1169,8 @@ describe('AuthFlow UI Integration', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo cargar/i);
     fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
 
-    expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
+    // Marcador de "detalle cargado": la sección Datos está en todos los autos (Compra solo en compras)
+    expect(await screen.findByRole('heading', { name: 'Datos' })).toBeInTheDocument();
     expect(mockVehiculosService.obtenerDetalle).toHaveBeenCalledTimes(2);
   });
 
@@ -1291,7 +1294,8 @@ describe('AuthFlow UI Integration', () => {
     await screen.findByText('MC-041');
     fireEvent.click(screen.getByRole('button', { name: 'Vendidos' }));
     fireEvent.click(await screen.findByText('MC-040'));
-    expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
+    // Marcador de "detalle cargado": la sección Datos está en todos los autos (Compra solo en compras)
+    expect(await screen.findByRole('heading', { name: 'Datos' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /volver/i }));
 

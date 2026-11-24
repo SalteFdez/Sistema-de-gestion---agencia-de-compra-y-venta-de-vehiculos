@@ -810,6 +810,27 @@ describe('VehiculosService', () => {
       expect(res.detalle?.permutaDeVenta).toBe('MC-014');
     });
 
+    it('un recibido sabe el id del auto vendido en cuya venta entró, para ir a su detalle', async () => {
+      const tablas: Record<string, Array<Record<string, unknown>>> = {
+        vehiculos: [
+          { id: 'v31', codigo: 'MC-031', marca: 'Honda', modelo: '110cc', anio: 2015, color: null, patente: null,
+            estado: 'en_stock', origen: 'permuta', fecha_ingreso: '2026-11-17', vendedor_texto: 'Pedro', valor_ingreso: 1000000 },
+        ],
+        v_costo_vehiculo: [{ vehiculo_id: 'v31', valor_ingreso: 1000000, gastos_asignados: 0, costo_real: 1000000 }],
+        movimientos: [],
+        asignaciones_gasto: [],
+        venta_permutas: [
+          { vehiculo_recibido_id: 'v31', venta_id: 'ven1', valor_pactado: 1000000,
+            venta: { vehiculo: { id: 'v14', codigo: 'MC-014' } }, vehiculo: { codigo: 'MC-031', marca: 'Honda', modelo: '110cc' } },
+        ],
+      };
+      mockDb.from = vi.fn().mockImplementation((tabla: string) => ({ select: vi.fn(() => builder(tablas[tabla] ?? [])) }));
+
+      const res = await new VehiculosService(mockDb).obtenerDetalle('v31');
+
+      expect(res.detalle?.permutaDeVentaId).toBe('v14');
+    });
+
     it('una venta lista sus permutas con código, marca, modelo y valor pactado', async () => {
       const tablas: Record<string, Array<Record<string, unknown>>> = {
         vehiculos: [

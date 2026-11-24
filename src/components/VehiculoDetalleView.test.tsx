@@ -42,7 +42,7 @@ describe('VehiculoDetalleView', () => {
     expect(screen.getByText(/Rojo/)).toBeInTheDocument();
     expect(screen.getByText(/AB123CD/)).toBeInTheDocument();
     expect(screen.getByText('14/11/2026')).toBeInTheDocument();
-    expect(screen.getByText('Compra')).toBeInTheDocument();
+    expect(screen.getByText('Compra', { selector: 'dd' })).toBeInTheDocument();
     expect(screen.getByText(/Juan Pérez/)).toBeInTheDocument();
   });
 
@@ -120,7 +120,9 @@ describe('VehiculoDetalleView', () => {
     expect(within(seccion).getByText('Cómo se cobró')).toBeInTheDocument();
     expect(within(seccion).getByText('Caja efectivo')).toBeInTheDocument();
     expect(within(seccion).getByText('$ 4.000.000')).toBeInTheDocument();
-    expect(within(seccion).getByText('Ganancia $ 1.500.000')).toBeInTheDocument();
+    // La ganancia es el número clave del encabezado (UX-06), ya no está dentro de Venta
+    expect(screen.getByText('Ganancia')).toBeInTheDocument();
+    expect(screen.getByText('$ 1.500.000')).toBeInTheDocument();
   });
 
   it('una venta por debajo del costo muestra "Pérdida" en rojo, y sin comprador no muestra la fila', () => {
@@ -143,8 +145,9 @@ describe('VehiculoDetalleView', () => {
       />
     );
 
-    const perdida = screen.getByText('Pérdida $ −200.000');
+    const perdida = screen.getByText('$ −200.000');
     expect(perdida).toHaveClass('text-red-600');
+    expect(screen.getByText('Pérdida')).toHaveClass('text-red-600');
     expect(screen.queryByText('Comprador')).not.toBeInTheDocument();
   });
 
@@ -289,7 +292,7 @@ describe('VehiculoDetalleView', () => {
     expect(screen.queryByRole('button', { name: /agregar gasto/i })).not.toBeInTheDocument();
   });
 
-  it('un vehículo de stock existente dice que no tiene pagos registrados', () => {
+  it('un vehículo de stock existente dice "Stock existente" en Datos y no tiene sección Compra', () => {
     render(
       <VehiculoDetalleView
         detalle={{ ...detalleBase, origen: 'inventario_inicial', pagos: [] }}
@@ -298,6 +301,8 @@ describe('VehiculoDetalleView', () => {
       />
     );
 
-    expect(screen.getByText('Cargado como stock existente, sin pagos registrados')).toBeInTheDocument();
+    const datos = screen.getByRole('heading', { name: 'Datos' }).closest('details') as HTMLElement;
+    expect(within(datos).getByText('Stock existente')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Compra' })).not.toBeInTheDocument();
   });
 });

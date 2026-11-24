@@ -37,7 +37,8 @@ describe('VehiculoDetalleView: financiación', () => {
     expect(within(lista).getByText('1 · 15/12/2026 · $ 500.000 · Pendiente')).toBeInTheDocument();
     expect(within(lista).getByText('4 · 15/03/2027 · $ 500.000 · Pendiente')).toBeInTheDocument();
     expect(screen.getByText('Falta cobrar $ 2.000.000')).toBeInTheDocument();
-    expect(screen.getByText('Ganancia $ 1.000.000')).toBeInTheDocument();
+    expect(screen.getByText('Ganancia')).toBeInTheDocument();
+    expect(screen.getByText('$ 1.000.000')).toBeInTheDocument();
   });
 
   it('una venta sin financiación no muestra el bloque', () => {
