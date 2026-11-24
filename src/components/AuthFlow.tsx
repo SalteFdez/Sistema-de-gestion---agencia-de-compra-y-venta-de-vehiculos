@@ -522,7 +522,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   if (isLinked && isUnlocked && linkedUser) {
     if (currentView === 'change_pin') {
       return (
-        <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 pt-[max(1.5rem,env(safe-area-inset-top))]">
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
             <ChangePinFlow
               authService={authService}
@@ -1221,7 +1221,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   // PANTALLA 2: Vinculado pero Bloqueado -> Ingresar PIN
   if (isLinked) {
     return (
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+      <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 pt-[max(1.5rem,env(safe-area-inset-top))]">
         <div className="w-full max-w-xs text-center mb-2">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Ingresá tu PIN</h1>
           {linkedUser && (
@@ -1272,7 +1272,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
 
   // PANTALLA 3: No vinculado -> Vincular dispositivo
   return (
-    <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+    <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 pt-[max(1.5rem,env(safe-area-inset-top))]">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
         <h1 className="text-2xl font-bold text-center text-gray-900 mb-2">
           Vincular dispositivo

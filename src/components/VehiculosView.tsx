@@ -316,7 +316,7 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
             <article
               key={v.id}
               onClick={() => onAbrirDetalle?.(v.id)}
-              className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm cursor-pointer"
+              className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm cursor-pointer transition duration-100 active:scale-[0.98]"
             >
               {fotoMostrada ? (
                 <img src={fotoMostrada} alt={`${v.marca} ${v.modelo}`} className="w-full h-48 object-cover" />

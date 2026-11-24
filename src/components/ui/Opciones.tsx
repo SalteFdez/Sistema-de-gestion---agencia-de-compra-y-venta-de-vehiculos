@@ -39,8 +39,8 @@ export const Opciones: React.FC<OpcionesProps> = ({ etiqueta, opciones, seleccio
           aria-pressed={elegida}
           aria-label={o.ariaLabel}
           onClick={() => onElegir(o.id)}
-          className={`min-h-11 px-3 py-2 text-left text-sm font-medium rounded-xl border ${
-            elegida ? 'bg-marca text-white border-marca' : 'bg-white text-gray-800 border-gray-300'
+          className={`min-h-11 px-3 py-2 text-left text-sm font-medium rounded-xl border transition duration-100 active:scale-[0.98] ${
+            elegida ? 'bg-marca text-white border-marca' : 'bg-white text-gray-800 border-gray-300 active:bg-gray-100'
           }`}
         >
           <span className="block">{o.nombre}</span>

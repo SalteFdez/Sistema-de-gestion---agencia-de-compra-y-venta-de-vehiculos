@@ -114,8 +114,7 @@ export const BarraNavegacion: React.FC<BarraNavegacionProps> = ({
   return (
     <nav
       aria-label="Navegación principal"
-      className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 pb-[env(safe-area-inset-bottom)]"
     >
       <div className="max-w-md mx-auto flex items-center justify-around">
         {ORDEN.map((id) => pestanas.find((p) => p.id === id)!).map((p) => {
@@ -126,7 +125,7 @@ export const BarraNavegacion: React.FC<BarraNavegacionProps> = ({
               type="button"
               onClick={() => onSeleccionar(p.id)}
               aria-current={activa ? 'page' : undefined}
-              className={`flex-1 min-h-[48px] py-1.5 px-2 flex flex-col items-center justify-center gap-1 transition-colors ${
+              className={`flex-1 min-h-[48px] py-1.5 px-2 flex flex-col items-center justify-center gap-1 transition duration-100 active:scale-[0.98] active:bg-gray-100 ${
                 activa
                   ? 'text-marca font-semibold'
                   : 'text-gray-500 hover:text-gray-800 font-normal'

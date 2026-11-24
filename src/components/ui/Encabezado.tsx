@@ -8,7 +8,8 @@ export interface EncabezadoProps {
 
 // Título de la pantalla con un Volver grande (área táctil de 44 px)
 export const Encabezado: React.FC<EncabezadoProps> = ({ titulo, onVolver }) => (
-  <header className="flex justify-between items-center py-3 mb-4">
+  // El padding superior nunca baja de 0,75 rem, y con notch sube a la zona segura
+  <header className="flex justify-between items-center pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 mb-4">
     <h1 className="text-xl font-bold text-gray-900">{titulo}</h1>
     {onVolver && (
       <button

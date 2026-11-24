@@ -22,7 +22,7 @@ export const VehiculoFila: React.FC<VehiculoFilaProps> = ({ vehiculo: v, fotoUrl
       <button
         type="button"
         onClick={onAbrir}
-        className="flex flex-1 min-w-0 items-center gap-3 text-left"
+        className="flex flex-1 min-w-0 items-center gap-3 text-left transition duration-100 active:bg-gray-100"
       >
         {fotoUrl ? (
           <img src={fotoUrl} alt={`${v.marca} ${v.modelo}`} className="w-16 h-16 shrink-0 object-cover rounded" />

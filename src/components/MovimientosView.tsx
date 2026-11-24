@@ -207,7 +207,7 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
             <li
               key={m.id}
               onClick={() => setSeleccionadoId(seleccionadoId === m.id ? null : m.id)}
-              className={`bg-white border border-gray-200 rounded-xl p-3 cursor-pointer ${m.anulado ? 'line-through text-gray-400' : ''}`}
+              className={`bg-white border border-gray-200 rounded-xl p-3 cursor-pointer transition duration-100 active:bg-gray-100 ${m.anulado ? 'line-through text-gray-400' : ''}`}
             >
               <div className="flex justify-between text-xs text-gray-500">
                 <span>{formatoFecha(m.fecha)}</span>
