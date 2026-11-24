@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import type { MovimientoItem } from '../lib/vehiculos/vehiculos-service';
+import type { FiltroMovimientos, MovimientoItem } from '../lib/vehiculos/vehiculos-service';
+import { Opciones } from './ui/Opciones';
 import { formatMoney } from '../lib/format/money';
 import { Encabezado } from './ui/Encabezado';
 import { Boton } from './ui/Boton';
 import { Dialogo } from './ui/Dialogo';
 import { Cargando } from './ui/Cargando';
 import { ErrorReintentar } from './ui/ErrorReintentar';
+import { agruparPorDia } from '../lib/vehiculos/movimientos-agrupados';
 
 export interface MovimientosViewProps {
   movimientos: MovimientoItem[];
@@ -28,6 +30,11 @@ export interface MovimientosViewProps {
   onVerVehiculo?: (vehiculoId: string) => void;
   /** Solo si Movimientos se muestra como pantalla secundaria; como pestaña raíz no hay Volver */
   onVolver?: () => void;
+  /** Filtro: entradas o salidas, y una cuenta. Si lo guarda quien navega, sobrevive a cambiar de pantalla */
+  filtro?: FiltroMovimientos;
+  onCambiarFiltro?: (filtro: FiltroMovimientos) => void;
+  /** Cuentas para el selector de cuenta (Todas + cada una) */
+  cuentas?: Array<{ id: string; nombre: string }>;
 }
 
 const ETIQUETA_TIPO: Record<string, string> = {
@@ -99,8 +106,19 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
   onVerVehiculo,
   vistaPreviaGasto,
   onVolver,
+  filtro,
+  onCambiarFiltro,
+  cuentas = [],
 }) => {
   const [seleccionadoId, setSeleccionadoId] = useState<string | null>(null);
+  // Filtro: si lo maneja quien navega, se pasa así sobrevive al detalle; si no, vive acá
+  const [filtroInterno, setFiltroInterno] = useState<FiltroMovimientos>({});
+  const filtroActual = filtro ?? filtroInterno;
+  const filtroActivo = !!filtroActual.sentido || !!filtroActual.cuentaId;
+  const elegirFiltro = (nuevo: FiltroMovimientos) => {
+    setFiltroInterno(nuevo);
+    onCambiarFiltro?.(nuevo);
+  };
   const [aAnular, setAAnular] = useState<MovimientoItem | null>(null);
   const [motivo, setMotivo] = useState<string>('');
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
@@ -135,11 +153,51 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
       <Encabezado titulo="Movimientos" onVolver={onVolver} />
 
+      <div className="w-full mb-4 space-y-3">
+        <Opciones
+          etiqueta="Ver"
+          columnas={3}
+          opciones={[
+            { id: 'todos', nombre: 'Todos' },
+            { id: 'entradas', nombre: 'Entradas' },
+            { id: 'salidas', nombre: 'Salidas' },
+          ]}
+          seleccionada={filtroActual.sentido ?? 'todos'}
+          onElegir={(id) =>
+            elegirFiltro({ ...filtroActual, sentido: id === 'todos' ? undefined : (id as 'entradas' | 'salidas') })
+          }
+        />
+        <div>
+          <span className="block text-xs font-semibold text-gray-700 mb-1">Cuenta</span>
+          <select
+            aria-label="Cuenta"
+            value={filtroActual.cuentaId ?? ''}
+            onChange={(e) => elegirFiltro({ ...filtroActual, cuentaId: e.target.value || undefined })}
+            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-base bg-white"
+          >
+            <option value="">Todas las cuentas</option>
+            {cuentas.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {errorCarga && <ErrorReintentar onReintentar={onReintentar ?? (() => undefined)} />}
       {cargando && movimientos.length === 0 && <Cargando />}
+      {!cargando && movimientos.length === 0 && filtroActivo && (
+        <p className="mb-4 text-sm text-gray-600 bg-white border border-dashed border-gray-300 rounded-xl p-4 text-center">
+          No hay movimientos con este filtro
+        </p>
+      )}
 
-      <ul className="space-y-2">
-        {movimientos.map((m) => {
+      {agruparPorDia(movimientos).map((grupo, i) => (
+        <section key={`${grupo.fecha}-${i}`} className="mb-4">
+          <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">{grupo.etiqueta}</h2>
+          <ul className="space-y-2">
+            {grupo.items.map((m) => {
           const entra = TIPOS_QUE_ENTRAN.has(m.tipo);
           const signo = entra ? '+' : '-';
           // El color del monto sigue al sentido (entra/sale) también en los anulados; el tachado los marca
@@ -194,8 +252,10 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
               )}
             </li>
           );
-        })}
-      </ul>
+            })}
+          </ul>
+        </section>
+      ))}
 
       {aAnular && (
         <Dialogo titulo="¿Seguro?" onCerrar={() => setAAnular(null)} guardando={guardando}>

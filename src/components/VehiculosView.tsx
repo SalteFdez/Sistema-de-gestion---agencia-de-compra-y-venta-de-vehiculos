@@ -5,6 +5,10 @@ import { coincideBusqueda } from '../lib/vehiculos/busqueda';
 import { prepararArchivos, compartir } from '../lib/vehiculos/compartir-fotos';
 import { Encabezado } from './ui/Encabezado';
 import { Boton } from './ui/Boton';
+import { Opciones } from './ui/Opciones';
+import { VehiculoFila } from './VehiculoFila';
+import { CompartirVehiculo } from './CompartirVehiculo';
+import { textoDiasDeVehiculo } from '../lib/vehiculos/dias-en-stock';
 
 /** Lo que devuelve el servicio al pedir las fotos vigentes de un auto para compartir */
 export interface FotosParaCompartirRes {
@@ -41,6 +45,27 @@ export interface VehiculosViewProps {
 }
 
 export type FiltroEstado = 'stock' | 'vendidos' | 'todos';
+
+/** Forma del listado: tarjetas con foto grande, o filas compactas */
+export type VistaListado = 'tarjetas' | 'lista';
+
+// Lo elegido se recuerda en este celular. Si el navegador no deja usar localStorage
+// (modo privado, datos bloqueados), no es un error: arranca en Tarjetas y no guarda.
+const CLAVE_VISTA = 'vehiculos.vista';
+const leerVista = (): VistaListado => {
+  try {
+    return localStorage.getItem(CLAVE_VISTA) === 'lista' ? 'lista' : 'tarjetas';
+  } catch {
+    return 'tarjetas';
+  }
+};
+const guardarVista = (v: VistaListado) => {
+  try {
+    localStorage.setItem(CLAVE_VISTA, v);
+  } catch {
+    // Sin guardar: la elección vale para esta sesión
+  }
+};
 
 export const VehiculosView: React.FC<VehiculosViewProps> = ({
   vehiculos,
@@ -80,6 +105,7 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
   // La búsqueda se aplica sobre lo que deja el filtro de estado
   const visibles = porEstado.filter((v) => coincideBusqueda(v, busquedaActual));
   const etiquetaFiltro = filtroEstado === 'stock' ? 'En stock' : filtroEstado === 'vendidos' ? 'Vendidos' : 'Todos';
+  const [vista, setVista] = useState<VistaListado>(leerVista);
   // Fotos agregadas desde el listado, por id de vehículo (se muestran sin recargar la lista)
   const [fotosNuevas, setFotosNuevas] = useState<Record<string, string>>({});
   const [erroresFoto, setErroresFoto] = useState<Record<string, string>>({});
@@ -216,6 +242,23 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
         })}
       </div>
 
+      <div className="mb-4">
+        <Opciones
+          etiqueta="Vista del listado"
+          columnas={2}
+          opciones={[
+            { id: 'tarjetas', nombre: 'Tarjetas' },
+            { id: 'lista', nombre: 'Lista' },
+          ]}
+          seleccionada={vista}
+          onElegir={(id) => {
+            const elegida = id as VistaListado;
+            setVista(elegida);
+            guardarVista(elegida);
+          }}
+        />
+      </div>
+
       {cargando && vehiculos.length === 0 && <Cargando />}
 
       {visibles.length === 0 && !(cargando && vehiculos.length === 0) && (
@@ -241,6 +284,31 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
         </div>
       )}
 
+      {vista === 'lista' ? (
+        <ul className="space-y-2">
+          {visibles.map((v) => (
+            <VehiculoFila
+              key={v.id}
+              vehiculo={v}
+              fotoUrl={fotosNuevas[v.id] ?? v.fotoUrl}
+              onAbrir={() => onAbrirDetalle?.(v.id)}
+              compartir={
+                v.fotoUrl ? (
+                  <CompartirVehiculo
+                    codigo={v.codigo}
+                    modo="fila"
+                    preparando={compartiendo[v.id] === 'preparando'}
+                    listo={compartiendo[v.id] === 'listo' && !!listasParaCompartir[v.id]}
+                    aviso={avisoCompartir[v.id]}
+                    onCompartir={() => void compartirAuto(v)}
+                    onCompartirAhora={() => void compartirAhora(v)}
+                  />
+                ) : undefined
+              }
+            />
+          ))}
+        </ul>
+      ) : (
       <div className="space-y-3">
         {visibles.map((v) => {
           const fotoMostrada = fotosNuevas[v.id] ?? v.fotoUrl;
@@ -295,34 +363,21 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
                   {v.anio}
                   {v.color ? ` · ${v.color}` : ''}
                 </p>
-                <div className="mt-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <BadgeEstado estado={v.estado} />
+                  {textoDiasDeVehiculo(v) && <span className="text-xs text-gray-600">{textoDiasDeVehiculo(v)}</span>}
                 </div>
                 {v.fotoUrl && (
                   <div className="mt-3" onClick={(e) => e.stopPropagation()}>
-                    {compartiendo[v.id] === 'listo' && listasParaCompartir[v.id] ? (
-                      <Boton anchoCompleto onClick={() => void compartirAhora(v)}>
-                        Compartir ahora (fotos listas)
-                      </Boton>
-                    ) : (
-                      <Boton
-                        anchoCompleto
-                        variante="secundario"
-                        guardando={compartiendo[v.id] === 'preparando'}
-                        textoGuardando="Preparando…"
-                        onClick={() => void compartirAuto(v)}
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                        </svg>
-                        Compartir
-                      </Boton>
-                    )}
-                    {avisoCompartir[v.id] && (
-                      <p role="alert" className="text-xs text-red-700 mt-1">
-                        {avisoCompartir[v.id]}
-                      </p>
-                    )}
+                    <CompartirVehiculo
+                      codigo={v.codigo}
+                      modo="tarjeta"
+                      preparando={compartiendo[v.id] === 'preparando'}
+                      listo={compartiendo[v.id] === 'listo' && !!listasParaCompartir[v.id]}
+                      aviso={avisoCompartir[v.id]}
+                      onCompartir={() => void compartirAuto(v)}
+                      onCompartirAhora={() => void compartirAhora(v)}
+                    />
                   </div>
                 )}
               </div>
@@ -330,6 +385,7 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
           );
         })}
       </div>
+      )}
     </div>
   );
 };

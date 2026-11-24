@@ -18,12 +18,18 @@ export interface OpcionesProps {
   /** Id de la opción elegida, o null si no hay ninguna */
   seleccionada: string | null;
   onElegir: (id: string) => void;
-  columnas?: 1 | 2;
+  columnas?: 1 | 2 | 3;
 }
+
+const CLASES_COLUMNAS: Record<1 | 2 | 3, string> = {
+  1: 'space-y-2',
+  2: 'grid grid-cols-2 gap-2',
+  3: 'grid grid-cols-3 gap-2',
+};
 
 // Grupo de botones seleccionables: el elegido va en el color de marca.
 export const Opciones: React.FC<OpcionesProps> = ({ etiqueta, opciones, seleccionada, onElegir, columnas = 1 }) => (
-  <div role="group" aria-label={etiqueta} className={columnas === 2 ? 'grid grid-cols-2 gap-2' : 'space-y-2'}>
+  <div role="group" aria-label={etiqueta} className={CLASES_COLUMNAS[columnas]}>
     {opciones.map((o) => {
       const elegida = seleccionada === o.id;
       return (

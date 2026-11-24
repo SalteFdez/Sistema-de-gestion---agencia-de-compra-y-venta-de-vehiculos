@@ -19,6 +19,8 @@ export interface VehiculoItem {
   estado: 'en_stock' | 'reservado' | 'vendido';
   fotoUrl: string | null;
   fechaIngreso: string;
+  /** Si está vendido: fecha de la venta activa, para contar los días hasta ahí */
+  fechaVenta?: string | null;
 }
 
 export interface CargarStockParams {
@@ -42,6 +44,7 @@ export interface CargarStockResult {
 /** Consulta de lectura encadenable (eq / order); al await devuelve { data, error }. */
 export interface Consulta extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
   eq: (col: string, value: unknown) => Consulta;
+  gt: (col: string, value: unknown) => Consulta;
   ilike: (col: string, patron: string) => Consulta;
   gte: (col: string, value: unknown) => Consulta;
   lt: (col: string, value: unknown) => Consulta;
@@ -130,6 +133,12 @@ export interface RegistrarVentaResult {
   ventaId?: string;
   codigo?: string;
   ganancia?: number;
+}
+
+/** Filtro de Movimientos: solo entradas (suman a una cuenta) o salidas (restan), y/o una cuenta */
+export interface FiltroMovimientos {
+  sentido?: 'entradas' | 'salidas';
+  cuentaId?: string;
 }
 
 export interface MovimientoItem {
@@ -595,8 +604,8 @@ export class VehiculosService {
   }
 
   /** Movimientos de a 50, del más nuevo al más viejo. `desde` es el índice del primer movimiento a traer. */
-  async listarMovimientos(desde: number): Promise<MovimientoItem[]> {
-    const { data, error } = await this.db
+  async listarMovimientos(desde: number, filtro: FiltroMovimientos = {}): Promise<MovimientoItem[]> {
+    let consulta = this.db
       .from('movimientos')
       .select(
         'id, fecha, tipo, monto, descripcion, anulado, anulado_at, motivo_anulacion, gasto_id, venta_id, vehiculo_id, ' +
@@ -604,7 +613,13 @@ export class VehiculosService {
           'cuota:cuotas(numero, financiacion:financiaciones(cantidad_cuotas)), ' +
           'cuenta:cuentas(nombre), vehiculo:vehiculos(codigo), categoria:categorias(nombre), ' +
           'creador:usuarios!created_by(nombre), anulador:usuarios!anulado_por(nombre)'
-      )
+      );
+    // Filtros en la consulta, no en la pantalla: así "Ver más" pagina sobre lo filtrado.
+    // Monto con signo: entrada > 0, salida < 0.
+    if (filtro.sentido === 'entradas') consulta = consulta.gt('monto', 0);
+    if (filtro.sentido === 'salidas') consulta = consulta.lt('monto', 0);
+    if (filtro.cuentaId) consulta = consulta.eq('cuenta_id', filtro.cuentaId);
+    const { data, error } = await consulta
       .order('created_at', { ascending: false })
       .range(desde, desde + TAMANO_PAGINA_MOVIMIENTOS - 1);
     if (error) {
@@ -1835,6 +1850,27 @@ export class VehiculosService {
       urlPorRuta = new Map((firmadas ?? []).map((f) => [f.path, f.signedUrl]));
     }
 
+    // Vendidos: fecha de la venta activa, en una sola consulta de lectura a ventas.
+    // Si falla, la lista sale igual y esos autos quedan sin fecha (cuentan hasta hoy).
+    const fechaVentaPorVehiculo = new Map<string, string>();
+    const idsVendidos = filas.filter((f) => f.estado === 'vendido').map((f) => String(f.id));
+    if (idsVendidos.length > 0) {
+      try {
+        const { data: ventas, error: errorVentas } = await this.db
+          .from('ventas')
+          .select('vehiculo_id, fecha')
+          .eq('anulada', false)
+          .in('vehiculo_id', idsVendidos);
+        if (!errorVentas) {
+          for (const r of (ventas ?? []) as Array<{ vehiculo_id: string; fecha: string }>) {
+            fechaVentaPorVehiculo.set(String(r.vehiculo_id), String(r.fecha));
+          }
+        }
+      } catch {
+        // Sin fechas de venta: la lista se muestra igual
+      }
+    }
+
     return filas.map((f): VehiculoItem => ({
       id: String(f.id),
       codigo: String(f.codigo),
@@ -1846,6 +1882,7 @@ export class VehiculosService {
       fotoUrl: f.foto_url ? (urlPorRuta.get(f.foto_url) ?? null) : null,
       fechaIngreso: String(f.fecha_ingreso),
       patente: (f.patente as string | null) ?? null,
+      fechaVenta: f.estado === 'vendido' ? (fechaVentaPorVehiculo.get(String(f.id)) ?? null) : null,
     }));
   }
 

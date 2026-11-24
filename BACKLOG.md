@@ -65,5 +65,8 @@ Sistema de gestión interna para una agencia de compra y venta de vehículos usa
 5. **UX-05a · Formularios de carga (Gasto, Ingreso, Comprar)** — Gasto e Ingreso en orden nuevo con Confirmar al final y "Cargar otro"; Comprar con "Sacar foto" arriba y datos de a dos. Ver §2.3. Requiere: UX-03b
    - **UX-05b · Vender con ganancia estimada y revisión** — Buscador para elegir el auto, botón Vender en el detalle, costo real y ganancia estimada en vivo, paso "Revisá antes de confirmar". Requiere: UX-05a
 6. **UX-06 · Detalle del vehículo** — Números clave arriba, acciones, secciones, Anular al final. Ver §3. Requiere: UX-03
-7. **UX-07 · Listas** — Vehículos compacta, Movimientos por día, Cuotas con Llamar/WhatsApp, Ganancia con gráfico. Ver §3. Requiere: UX-03
+7. **UX-07a · Vehículos: vista Lista y días en stock** — Selector Tarjetas/Lista recordado por celular, lista compacta con Compartir, días en stock. Requiere: UX-06, UX-09b
+   - **UX-07b · Movimientos por día y con filtro** — Grupos Hoy/Ayer/fecha, filtro Entradas/Salidas y cuenta en la consulta. Requiere: UX-03b
+   - **UX-07c · Cuotas: Llamar y WhatsApp** — Botones Llamar y WhatsApp con mensaje armado, Cobrar más grande. Requiere: UX-03b
+   - **UX-07d · Ganancia por mes con gráfico** — Barras SVG de los últimos 6 meses, verde/rojo. Requiere: E3-01, UX-03b
 8. **UX-08 · PWA** — Íconos PNG, safe areas, feedback táctil. Ver §4. Requiere: UX-01

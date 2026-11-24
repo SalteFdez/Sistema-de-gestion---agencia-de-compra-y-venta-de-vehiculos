@@ -16,7 +16,8 @@ describe('CuotasPorCobrarView', () => {
 
     const tarjeta = screen.getByText('Pedro').closest('article') as HTMLElement;
     expect(within(tarjeta).getByText('15/01/2027')).toBeInTheDocument();
-    expect(within(tarjeta).getByRole('link', { name: '1155' })).toHaveAttribute('href', 'tel:1155');
+    expect(within(tarjeta).getByText('1155')).toBeInTheDocument();
+    expect(within(tarjeta).getByRole('link', { name: 'Llamar' })).toHaveAttribute('href', 'tel:1155');
     expect(within(tarjeta).getByText('MC-014')).toBeInTheDocument();
     expect(within(tarjeta).getByText('Cuota 2 de 4')).toBeInTheDocument();
     expect(within(tarjeta).getByText('$ 500.000')).toBeInTheDocument();

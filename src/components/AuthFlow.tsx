@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import type { FiltroMovimientos } from '../lib/vehiculos/vehiculos-service';
 import type { DeviceAuthService, LinkedUser } from '../lib/auth/device-auth';
 import type { PinLockout, LockoutStatus } from '../lib/auth/pin-lockout';
 import type { SessionInactivityTracker } from '../lib/auth/session-inactivity';
@@ -179,6 +180,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
 
   const [movimientos, setMovimientos] = useState<MovimientoItem[]>([]);
   const [hayMasMovimientos, setHayMasMovimientos] = useState<boolean>(false);
+  // Filtro de Movimientos: vive acá para sobrevivir a cambiar de pantalla. El ref es lo que lee la carga,
+  // así anular, cobrar y "Ver más" piden con el mismo filtro sin cambiar las dependencias de los efectos.
+  const [filtroMovimientos, setFiltroMovimientos] = useState<FiltroMovimientos>({});
+  const filtroMovimientosRef = useRef<FiltroMovimientos>({});
 
   const [cargandoMovimientos, setCargandoMovimientos] = useState<boolean>(false);
   const [errorMovimientos, setErrorMovimientos] = useState<boolean>(false);
@@ -186,7 +191,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     if (!vehiculosService) return;
     setCargandoMovimientos(true);
     try {
-      const lista = await vehiculosService.listarMovimientos(desde);
+      const filtroVigente = filtroMovimientosRef.current;
+      const lista = await (filtroVigente.sentido || filtroVigente.cuentaId
+        ? vehiculosService.listarMovimientos(desde, filtroVigente)
+        : vehiculosService.listarMovimientos(desde));
       setMovimientos(desde === 0 ? lista : (prev) => [...prev, ...lista]);
       // Una página llena (50) indica que puede haber más
       setHayMasMovimientos(lista.length === TAMANO_PAGINA_MOVIMIENTOS);
@@ -197,6 +205,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       setCargandoMovimientos(false);
     }
   }, [vehiculosService]);
+
+  // Cambiar el filtro vuelve a pedir desde 0, con el filtro nuevo
+  const cambiarFiltroMovimientos = useCallback((nuevo: FiltroMovimientos) => {
+    filtroMovimientosRef.current = nuevo;
+    setFiltroMovimientos(nuevo);
+    void loadMovimientos(0);
+  }, [loadMovimientos]);
 
   const loadCategoriasIngreso = useCallback(async () => {
     if (!vehiculosService) return;
@@ -719,6 +734,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             errorCarga={errorMovimientos}
             onReintentar={() => void loadMovimientos(0)}
             onVerMas={() => void loadMovimientos(movimientos.length)}
+            filtro={filtroMovimientos}
+            onCambiarFiltro={cambiarFiltroMovimientos}
+            cuentas={cuentas.map((c) => ({ id: c.id, nombre: c.nombre }))}
             onAnular={
               vehiculosService
                 ? async (m, motivo) => {

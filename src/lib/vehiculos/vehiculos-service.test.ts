@@ -2211,6 +2211,66 @@ describe('VehiculosService', () => {
     });
   });
 
+  describe('listarMovimientos: filtros en la consulta', () => {
+    // Consulta encadenable que registra cada filtro; resuelve con una lista vacía
+    const consultaMov = () => {
+      const b: Record<string, unknown> = {
+        eq: vi.fn(() => b),
+        gt: vi.fn(() => b),
+        lt: vi.fn(() => b),
+        order: vi.fn(() => b),
+        range: vi.fn(() => b),
+        then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+          Promise.resolve({ data: [], error: null }).then(ok, ko),
+      };
+      return b;
+    };
+    const conConsulta = (b: Record<string, unknown>) => {
+      mockDb.from = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue(b) });
+    };
+
+    it('sin filtro, pide los movimientos de siempre: sin condiciones y de a 50, del más nuevo', async () => {
+      const b = consultaMov();
+      conConsulta(b);
+
+      await new VehiculosService(mockDb).listarMovimientos(0);
+
+      expect(b.gt).not.toHaveBeenCalled();
+      expect(b.lt).not.toHaveBeenCalled();
+      expect(b.eq).not.toHaveBeenCalled();
+      expect(b.order).toHaveBeenCalledWith('created_at', { ascending: false });
+      expect(b.range).toHaveBeenCalledWith(0, 49);
+    });
+
+    it('con sentido "entradas" pide monto > 0; con "salidas", monto < 0', async () => {
+      const entradas = consultaMov();
+      conConsulta(entradas);
+      await new VehiculosService(mockDb).listarMovimientos(0, { sentido: 'entradas' });
+      expect(entradas.gt).toHaveBeenCalledWith('monto', 0);
+      expect(entradas.lt).not.toHaveBeenCalled();
+
+      const salidas = consultaMov();
+      conConsulta(salidas);
+      await new VehiculosService(mockDb).listarMovimientos(0, { sentido: 'salidas' });
+      expect(salidas.lt).toHaveBeenCalledWith('monto', 0);
+      expect(salidas.gt).not.toHaveBeenCalled();
+    });
+
+    it('con una cuenta pide cuenta_id, y se combina con el sentido y la página siguiente', async () => {
+      const soloCuenta = consultaMov();
+      conConsulta(soloCuenta);
+      await new VehiculosService(mockDb).listarMovimientos(0, { cuentaId: 'c1' });
+      expect(soloCuenta.eq).toHaveBeenCalledWith('cuenta_id', 'c1');
+
+      const combinado = consultaMov();
+      conConsulta(combinado);
+      await new VehiculosService(mockDb).listarMovimientos(50, { sentido: 'salidas', cuentaId: 'c1' });
+      expect(combinado.lt).toHaveBeenCalledWith('monto', 0);
+      expect(combinado.eq).toHaveBeenCalledWith('cuenta_id', 'c1');
+      expect(combinado.range).toHaveBeenCalledWith(50, 99);
+    });
+  });
+
   describe('vistaPreviaAnulacionVehiculo', () => {
     it('lista los pagos de la compra por cuenta y la cantidad y total de gastos vigentes', async () => {
       const consulta = (resultado: unknown) => {
@@ -3191,6 +3251,58 @@ describe('VehiculosService', () => {
 
       expect(createSignedUrls).not.toHaveBeenCalled();
       expect(lista[0].fotoUrl).toBeNull();
+    });
+
+    // Vendidos: fecha de la venta activa, con una sola consulta de lectura a ventas
+    const filasConVendidos = [
+      { id: 'v1', codigo: 'MC-001', marca: 'Fiat', modelo: 'Uno', anio: 2010, color: null, estado: 'en_stock', foto_url: null, fecha_ingreso: '2026-11-13' },
+      { id: 'v9', codigo: 'MC-009', marca: 'Fiat', modelo: 'Palio', anio: 2009, color: null, estado: 'vendido', foto_url: null, fecha_ingreso: '2026-10-01' },
+      { id: 'v8', codigo: 'MC-008', marca: 'Fiat', modelo: 'Duna', anio: 2008, color: null, estado: 'vendido', foto_url: null, fecha_ingreso: '2026-10-02' },
+    ];
+
+    it('los vendidos salen con la fecha de su venta activa, en un solo pedido a ventas', async () => {
+      const order = vi.fn().mockResolvedValue({ data: filasConVendidos, error: null });
+      const select = vi.fn().mockReturnValue({ order });
+      const inFn = vi.fn().mockResolvedValue({
+        data: [
+          { vehiculo_id: 'v9', fecha: '2026-11-15' },
+          { vehiculo_id: 'v8', fecha: '2026-11-20' },
+        ],
+        error: null,
+      });
+      const eq = vi.fn().mockReturnValue({ in: inFn });
+      const ventasSelect = vi.fn().mockReturnValue({ eq });
+      mockDb.from = vi.fn().mockImplementation((tabla: string) =>
+        tabla === 'ventas' ? { select: ventasSelect } : { select }
+      );
+
+      const lista = await new VehiculosService(mockDb).listarVehiculos();
+
+      expect(mockDb.from).toHaveBeenCalledWith('ventas');
+      expect(ventasSelect).toHaveBeenCalledWith('vehiculo_id, fecha');
+      expect(eq).toHaveBeenCalledWith('anulada', false);
+      expect(inFn).toHaveBeenCalledTimes(1);
+      expect(inFn).toHaveBeenCalledWith('vehiculo_id', ['v9', 'v8']);
+      expect(lista.find((v) => v.id === 'v9')?.fechaVenta).toBe('2026-11-15');
+      expect(lista.find((v) => v.id === 'v8')?.fechaVenta).toBe('2026-11-20');
+      expect(lista.find((v) => v.id === 'v1')?.fechaVenta).toBeNull();
+    });
+
+    it('si la consulta de ventas falla, la lista sale igual y los vendidos quedan sin fecha de venta', async () => {
+      const order = vi.fn().mockResolvedValue({ data: filasConVendidos, error: null });
+      const select = vi.fn().mockReturnValue({ order });
+      const inFn = vi.fn().mockResolvedValue({ data: null, error: { message: 'ventas no disponibles' } });
+      const eq = vi.fn().mockReturnValue({ in: inFn });
+      const ventasSelect = vi.fn().mockReturnValue({ eq });
+      mockDb.from = vi.fn().mockImplementation((tabla: string) =>
+        tabla === 'ventas' ? { select: ventasSelect } : { select }
+      );
+
+      const lista = await new VehiculosService(mockDb).listarVehiculos();
+
+      expect(lista).toHaveLength(3);
+      expect(lista.find((v) => v.id === 'v9')?.fechaVenta).toBeNull();
+      expect(lista.find((v) => v.id === 'v8')?.fechaVenta).toBeNull();
     });
   });
 });

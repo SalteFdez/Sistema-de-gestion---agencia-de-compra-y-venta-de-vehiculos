@@ -1,7 +1,8 @@
 import React from 'react';
 import type { MesGanancia } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
-import { leyendaSinAsignar } from '../lib/reportes/ganancia';
+import { leyendaSinAsignar, ultimos6Meses } from '../lib/reportes/ganancia';
+import { GraficoGanancia } from './GraficoGanancia';
 import { Encabezado } from './ui/Encabezado';
 import { Cargando } from './ui/Cargando';
 import { ErrorReintentar } from './ui/ErrorReintentar';
@@ -40,6 +41,13 @@ export const GananciaMensualView: React.FC<GananciaMensualViewProps> = ({
 
       {errorCarga && <ErrorReintentar onReintentar={onReintentar ?? (() => undefined)} />}
       {cargando && meses.length === 0 && <Cargando />}
+
+      {/* El gráfico solo con datos: no mientras carga ni con error */}
+      {!cargando && !errorCarga && meses.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm mb-4">
+          <GraficoGanancia meses={ultimos6Meses(meses)} />
+        </div>
+      )}
 
       {!errorCarga && !(cargando && meses.length === 0) && (meses.length === 0 ? (
         <p className="text-sm text-gray-600 bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">

@@ -1,6 +1,8 @@
 import React from 'react';
 import type { CuotaPorCobrar } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
+import { normalizarCelularAR } from '../lib/vehiculos/celular-ar';
+import { linkWhatsApp, mensajeCuota } from '../lib/vehiculos/cobranza-whatsapp';
 import { Encabezado } from './ui/Encabezado';
 import { Boton } from './ui/Boton';
 import { Cargando } from './ui/Cargando';
@@ -63,6 +65,10 @@ export const CuotasPorCobrarView: React.FC<CuotasPorCobrarViewProps> = ({
         <div className="space-y-3">
           {ordenadas.map((c) => {
             const vencida = c.estado === 'vencida';
+            // Llamar: el teléfono tal como se cargó, solo dígitos y +. WhatsApp: solo si se puede armar el celular.
+            const llamar = c.compradorTelefono ? c.compradorTelefono.replace(/[^\d+]/g, '') : null;
+            const celular = c.compradorTelefono ? normalizarCelularAR(c.compradorTelefono) : null;
+            const whatsapp = celular ? linkWhatsApp(celular, mensajeCuota(c)) : null;
             return (
               <article
                 key={c.cuotaId}
@@ -75,11 +81,7 @@ export const CuotasPorCobrarView: React.FC<CuotasPorCobrarViewProps> = ({
                   <span className="text-xs text-gray-500">{`Cuota ${c.numero} de ${c.totalCuotas}`}</span>
                 </div>
                 <p className="text-sm text-gray-900 mt-1">{c.comprador ?? 'Sin comprador'}</p>
-                {c.compradorTelefono && (
-                  <a href={`tel:${c.compradorTelefono}`} className="text-sm text-blue-700 underline">
-                    {c.compradorTelefono}
-                  </a>
-                )}
+                {c.compradorTelefono && <p className="text-xs text-gray-600">{c.compradorTelefono}</p>}
                 <p className="text-xs text-gray-600 mt-1">
                   <span>{c.vehiculoCodigo}</span>
                 </p>
@@ -96,6 +98,20 @@ export const CuotasPorCobrarView: React.FC<CuotasPorCobrarViewProps> = ({
                   <span className="text-xs font-semibold text-gray-600">{ETIQUETA_ESTADO[c.estado] ?? c.estado}</span>
                   <Boton onClick={() => onCobrar(c)}>Cobrar</Boton>
                 </div>
+                {(llamar || whatsapp) && (
+                  <div className="flex gap-2 mt-2">
+                    {llamar && (
+                      <a href={`tel:${llamar}`} className="flex-1 min-h-11 flex items-center justify-center rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-800">
+                        Llamar
+                      </a>
+                    )}
+                    {whatsapp && (
+                      <a href={whatsapp} target="_blank" rel="noopener" className="flex-1 min-h-11 flex items-center justify-center rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-800">
+                        WhatsApp
+                      </a>
+                    )}
+                  </div>
+                )}
               </article>
             );
           })}

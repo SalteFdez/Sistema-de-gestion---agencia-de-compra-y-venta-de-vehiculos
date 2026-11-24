@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diasEnStock, textoDiasEnStock } from './dias-en-stock';
+import { diasEnStock, textoDiasEnStock, textoDiasDeVehiculo } from './dias-en-stock';
 
 describe('diasEnStock', () => {
   it('en stock cuenta desde la fecha de ingreso hasta hoy', () => {
@@ -28,5 +28,13 @@ describe('textoDiasEnStock', () => {
     expect(textoDiasEnStock(0)).toBe('Ingresó hoy');
     expect(textoDiasEnStock(1)).toBe('1 día en stock');
     expect(textoDiasEnStock(45)).toBe('45 días en stock');
+  });
+});
+
+describe('textoDiasDeVehiculo: datos que no son una fecha válida', () => {
+  it('sin fecha de ingreso, o con una que no es AAAA-MM-DD real, no muestra días y no tira error', () => {
+    expect(textoDiasDeVehiculo({ fechaIngreso: undefined as unknown as string, estado: 'en_stock' })).toBeNull();
+    expect(textoDiasDeVehiculo({ fechaIngreso: '2026-13-01', estado: 'en_stock' })).toBeNull();
+    expect(textoDiasDeVehiculo({ fechaIngreso: '24/11/2026', estado: 'en_stock' })).toBeNull();
   });
 });
