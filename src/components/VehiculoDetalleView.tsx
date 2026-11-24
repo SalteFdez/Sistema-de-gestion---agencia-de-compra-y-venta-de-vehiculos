@@ -12,6 +12,8 @@ export interface VehiculoDetalleViewProps {
   fotoUrl: string | null;
   onVolver: () => void;
   onAgregarGasto?: () => void;
+  /** Abre Vender con este auto ya elegido (solo autos en stock) */
+  onVender?: () => void;
   /** Lo que se anula con la compra, para el aviso "¿Seguro?" antes de confirmar */
   vistaPrevia?: VistaPreviaAnulacion;
   onAnularVehiculo?: (motivo: string) => void | Promise<void | { success: boolean; error?: string }>;
@@ -60,6 +62,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   fotoUrl,
   onVolver,
   onAgregarGasto,
+  onVender,
   vistaPrevia,
   onAnularVehiculo,
   onAnularVenta,
@@ -284,6 +287,14 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
               </Boton>
             </div>
           )
+        )}
+
+        {onVender && detalle.estado === 'en_stock' && !detalle.anulado && (
+          <div className="mt-4">
+            <Boton anchoCompleto onClick={onVender}>
+              Vender
+            </Boton>
+          </div>
         )}
 
         {onAgregarGasto && !detalle.anulado && (

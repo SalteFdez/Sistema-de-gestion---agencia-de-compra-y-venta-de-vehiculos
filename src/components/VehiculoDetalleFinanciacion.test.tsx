@@ -96,7 +96,8 @@ describe('VenderVehiculoView: resumen con financiación', () => {
     fireEvent.change(screen.getByLabelText('Cantidad de cuotas'), { target: { value: '4' } });
     fireEvent.change(screen.getByLabelText('Fecha de la primera cuota'), { target: { value: '2030-12-15' } });
     fireEvent.change(screen.getByLabelText('Monto pago 1'), { target: { value: '3000000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
 
     expect(await screen.findByText(/Queda por cobrar \$ 2\.000\.000 en 4 cuotas de \$ 500\.000 \(primera el 15\/12\)/)).toBeInTheDocument();
   });

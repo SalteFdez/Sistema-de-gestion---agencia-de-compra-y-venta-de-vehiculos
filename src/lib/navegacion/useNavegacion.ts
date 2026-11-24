@@ -23,7 +23,8 @@ export type Vista =
   | 'ganancia_mensual'
   | 'ganancia_mes'
   | 'mas'
-  | 'cargar_stock';
+  | 'cargar_stock'
+  | 'vender_revision';
 
 export type Pestana = 'home' | 'vehiculos' | 'movimientos' | 'mas';
 

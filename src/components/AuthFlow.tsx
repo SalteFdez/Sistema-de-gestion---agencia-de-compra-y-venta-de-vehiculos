@@ -59,7 +59,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
   const [mostrarConfirmarOlvidePin, setMostrarConfirmarOlvidePin] = useState<boolean>(false);
-  const { vista: currentView, ir, volver, reemplazar, irAPestana } = useNavegacion({
+  const { vista: currentView, datos: datosNavegacion, ir, volver, reemplazar, irAPestana } = useNavegacion({
     isUnlocked,
     // Al abrir la app se entra a Vehículos: es la pantalla de todos los días
     vistaInicial: 'vehiculos',
@@ -822,12 +822,30 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
-    if (currentView === 'vender') {
+    // Datos y revisión son la misma pantalla (misma key): así no se pierde lo cargado al pasar de una a otra
+    if (currentView === 'vender' || currentView === 'vender_revision') {
+      const idInicial = String(datosNavegacion?.vehiculoId ?? '');
       return (
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <VenderVehiculoView
+            key="vender"
             vehiculos={vehiculos}
             cuentas={cuentas}
+            vehiculoInicial={idInicial ? vehiculos.find((v) => v.id === idInicial) : undefined}
+            paso={currentView === 'vender_revision' ? 'revision' : 'datos'}
+            onContinuar={() => ir('vender_revision')}
+            onCorregir={volver}
+            // Venta registrada: la confirmación pasa a ser Caja (sin dejar la revisión ni los datos enviados atrás)
+            onTerminar={() => reemplazar('home')}
+            onObtenerCosto={
+              vehiculosService
+                ? async (id) => {
+                    const res = await vehiculosService.obtenerDetalle(id);
+                    if (!res.success || !res.detalle) throw new Error(res.error ?? 'Sin detalle');
+                    return res.detalle.costoReal;
+                  }
+                : undefined
+            }
             onVolver={volver}
             onRegistrar={
               vehiculosService
@@ -882,6 +900,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             detalle={detalleVehiculo}
             fotoUrl={fotoDetalle}
             onVolver={volver}
+            onVender={() => {
+              // Vender con este auto ya elegido: arranca en los datos de la venta
+              ir('vender', { vehiculoId: detalleVehiculo.id });
+            }}
             onAgregarGasto={() => {
               setGastoPreseleccionado(detalleVehiculo.id);
               loadCuentasData();

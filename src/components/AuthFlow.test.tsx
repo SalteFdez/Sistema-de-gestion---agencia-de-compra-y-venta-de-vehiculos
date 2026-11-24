@@ -1242,7 +1242,8 @@ describe('AuthFlow UI Integration', () => {
     irACaja(); fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
     fireEvent.click(await screen.findByText('MC-030'));
     fireEvent.change(await screen.findByLabelText(/precio de venta/i), { target: { value: '500000' } });
-    fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
 
     expect(await screen.findByTestId('codigo-venta')).toHaveTextContent('MC-030');
     expect(mockVehiculosService.registrarVentaConPermutas).toHaveBeenCalledTimes(1);
@@ -1343,7 +1344,8 @@ describe('AuthFlow UI Integration', () => {
     irACaja(); fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
     fireEvent.click(await screen.findByText('MC-050'));
     fireEvent.change(await screen.findByLabelText(/precio de venta/i), { target: { value: '5000000' } });
-    fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
     await screen.findByTestId('codigo-venta');
     fireEvent.click(screen.getByRole('button', { name: /volver a caja/i }));
 

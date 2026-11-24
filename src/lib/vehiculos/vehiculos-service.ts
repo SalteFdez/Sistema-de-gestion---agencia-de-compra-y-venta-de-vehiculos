@@ -14,6 +14,8 @@ export interface VehiculoItem {
   color: string | null;
   /** Para la búsqueda del listado */
   patente?: string | null;
+  /** Costo real, si la lista lo trae (si no, se pide con obtenerDetalle) */
+  costoReal?: number;
   estado: 'en_stock' | 'reservado' | 'vendido';
   fotoUrl: string | null;
   fechaIngreso: string;

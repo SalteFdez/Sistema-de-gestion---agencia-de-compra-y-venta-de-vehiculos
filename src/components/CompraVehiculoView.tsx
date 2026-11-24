@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { CuentaItem } from '../lib/cuentas/cuentas-service';
 import { formatMoney, parseMoneyInput } from '../lib/format/money';
 import { comprimirFotoEnNavegador } from '../lib/vehiculos/comprimir-foto';
@@ -35,6 +35,20 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
   const [patente, setPatente] = useState<string>('');
   const [vendedor, setVendedor] = useState<string>('');
   const [fotoElegida, setFotoElegida] = useState<File | null>(null);
+  // Vista previa de la foto elegida: su URL de objeto se revoca al cambiarla y al desmontar
+  const [vistaPrevia, setVistaPrevia] = useState<string | null>(null);
+  const vistaRef = useRef<string | null>(null);
+  const inputFoto = useRef<HTMLInputElement | null>(null);
+  const elegirFoto = (archivo: File | null) => {
+    if (vistaRef.current) URL.revokeObjectURL(vistaRef.current);
+    const url = archivo ? URL.createObjectURL(archivo) : null;
+    vistaRef.current = url;
+    setVistaPrevia(url);
+    setFotoElegida(archivo);
+  };
+  useEffect(() => () => {
+    if (vistaRef.current) URL.revokeObjectURL(vistaRef.current);
+  }, []);
   const [avisoNegativo, setAvisoNegativo] = useState<Array<{ nombre: string; saldoResultante: number }> | null>(null);
   const [confirmacion, setConfirmacion] = useState<{ codigo: string; resumen: string } | null>(null);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
@@ -158,6 +172,39 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
 
       {cuentas.length > 0 && (
         <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+          {/* La foto primero: "Sacar foto" abre la cámara; ya elegida, muestra la vista previa */}
+          <div>
+            {vistaPrevia ? (
+              <div className="space-y-2">
+                <img src={vistaPrevia} alt="Vista previa de la foto" className="w-full h-48 object-cover rounded-xl" />
+                <button
+                  type="button"
+                  onClick={() => inputFoto.current?.click()}
+                  className="w-full py-2 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg"
+                >
+                  Cambiar foto
+                </button>
+              </div>
+            ) : (
+              <label
+                htmlFor="compra-foto"
+                className="flex items-center justify-center h-40 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 text-base font-semibold text-gray-800 cursor-pointer"
+              >
+                Sacar foto
+              </label>
+            )}
+            <input
+              ref={inputFoto}
+              id="compra-foto"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={(e) => elegirFoto(e.target.files?.[0] ?? null)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="compra-marca" className="block text-xs font-semibold text-gray-700 mb-1">Marca</label>
             <input
@@ -178,6 +225,8 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="compra-anio" className="block text-xs font-semibold text-gray-700 mb-1">Año</label>
             <input
@@ -200,6 +249,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
+          </div>
           <div>
             <label htmlFor="compra-patente" className="block text-xs font-semibold text-gray-700 mb-1">Patente (opcional)</label>
             <input
@@ -220,18 +270,6 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
-          <div>
-            <label htmlFor="compra-foto" className="block text-xs font-semibold text-gray-700 mb-1">Foto (opcional)</label>
-            <input
-              id="compra-foto"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(e) => setFotoElegida(e.target.files?.[0] ?? null)}
-              className="w-full text-sm"
-            />
-          </div>
-
           <div>
             <label htmlFor="compra-precio" className="block text-xs font-semibold text-gray-700 mb-1">
               Precio de compra ($)

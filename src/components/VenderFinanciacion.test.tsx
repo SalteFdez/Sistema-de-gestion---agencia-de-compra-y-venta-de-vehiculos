@@ -70,10 +70,10 @@ describe('VenderVehiculoView: financiación', () => {
     abrirVenta('5000000');
     elegirFinanciacion();
     llenarFinanciacion('6000000', '4');
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeDisabled();
 
     llenarFinanciacion('2000000', '0');
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   });
 
   it('Confirmar queda deshabilitado si la primera cuota es anterior a hoy', () => {
@@ -83,7 +83,7 @@ describe('VenderVehiculoView: financiación', () => {
     elegirFinanciacion();
     llenarFinanciacion('2000000', '4', '2020-01-01');
 
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   });
 
   it('con financiación válida confirma con financiación y teléfono del comprador', () => {
@@ -95,7 +95,8 @@ describe('VenderVehiculoView: financiación', () => {
     llenarFinanciacion('2000000', '4');
     fireEvent.change(screen.getByLabelText('Teléfono del comprador (opcional)'), { target: { value: '1155' } });
     fireEvent.change(screen.getByLabelText('Monto pago 1'), { target: { value: '3000000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
 
     expect(onRegistrar).toHaveBeenCalledWith(expect.objectContaining({
       precio: 5000000,
@@ -116,6 +117,6 @@ describe('VenderVehiculoView: financiación', () => {
     elegirFinanciacion();
     llenarFinanciacion('2000000', '2');
 
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeEnabled();
   });
 });

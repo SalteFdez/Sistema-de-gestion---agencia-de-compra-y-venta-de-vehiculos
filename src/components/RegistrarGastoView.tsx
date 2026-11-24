@@ -207,6 +207,24 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
     }
   };
 
+  // Cargar otro: formulario vacío, con la misma cuenta y (si venía de un auto) el mismo auto
+  const cargarOtro = () => {
+    setMonto('');
+    setCategoriaId(null);
+    setAlcance(vehiculoPreseleccionado ? 'vehiculo' : null);
+    setVehiculoId(vehiculoPreseleccionado ?? null);
+    setFilasVarios([]);
+    setProveedor(null);
+    setTextoProveedor('');
+    setResultadosProveedor([]);
+    setTelefonoNuevo('');
+    setErrorProveedor(null);
+    setDescripcion('');
+    setAvisoNegativo(null);
+    setErrorGuardado(null);
+    setResumen(null);
+  };
+
   const montoNumero = parseMoneyInput(monto);
   // Ingreso: solo monto, categoría y cuenta (siempre general). Gasto: también el alcance.
   // Reparto: cada monto > 0, sin vehículos repetidos, y lo asignado no supera el total
@@ -241,13 +259,18 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
             {modo === 'ingreso' ? 'Ingreso registrado' : 'Gasto registrado'}
           </span>
           <p className="text-base text-gray-800 mt-4">{resumen}</p>
-          <button
-            type="button"
-            onClick={onVolver}
-            className="w-full mt-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium text-sm rounded-xl"
-          >
-            Volver a Caja
-          </button>
+          <div className="flex flex-col gap-2 mt-6">
+            <Boton anchoCompleto variante="secundario" onClick={cargarOtro}>
+              Cargar otro
+            </Boton>
+            <button
+              type="button"
+              onClick={onVolver}
+              className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium text-sm rounded-xl"
+            >
+              Volver a Caja
+            </button>
+          </div>
         </section>
       </div>
     );
@@ -267,11 +290,19 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
     );
   }
 
+  // Gasto general o a un vehículo: Confirmar fijo abajo. En varios (reparto largo) va al final del contenido.
+  const confirmarFijo = modo === 'gasto' && alcance !== 'varios';
+  const botonConfirmar = (
+    <Boton anchoCompleto disabled={!puedeConfirmar} guardando={guardando} onClick={intentarConfirmar}>
+      Confirmar
+    </Boton>
+  );
+
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
       <Encabezado titulo={titulo} onVolver={onVolver} />
 
-      <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-4">
+      <section className={`bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-4 ${confirmarFijo ? 'mb-28' : ''}`}>
         <div>
           <label htmlFor="gasto-monto" className="block text-xs font-semibold text-gray-700 mb-1">
             Monto ($)
@@ -283,18 +314,66 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
           />
         </div>
 
-        <div>
-          <label htmlFor="gasto-descripcion" className="block text-xs font-semibold text-gray-700 mb-1">
-            Descripción (opcional)
-          </label>
-          <input
-            id="gasto-descripcion"
-            type="text"
-            value={descripcion}
-            onChange={(e) => setDescripcion(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
+        {modo === 'gasto' && (
+          <div>
+            <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">¿A qué corresponde?</h2>
+            <Opciones
+              etiqueta="¿A qué corresponde?"
+              columnas={2}
+              opciones={[
+                { id: 'general', nombre: 'General del negocio' },
+                { id: 'vehiculo', nombre: 'Un vehículo' },
+                { id: 'varios', nombre: 'Varios vehículos' },
+              ]}
+              seleccionada={alcance}
+              onElegir={(id) => setAlcance(id as 'general' | 'vehiculo' | 'varios')}
+            />
+          </div>
+        )}
+        {alcance === 'varios' && (
+          <FilasVehiculoMonto
+            total={montoNumero}
+            vehiculos={vehiculos}
+            filas={filasVarios}
+            onChange={setFilasVarios}
           />
-        </div>
+        )}
+        {alcance === 'vehiculo' && (
+          <div>
+            <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Elegí el vehículo</h2>
+            <div className="space-y-2">
+              {vehiculosOrdenados.map((v) => {
+                const activo = vehiculoId === v.id;
+                return (
+                  <article
+                    key={v.id}
+                    onClick={() => setVehiculoId(v.id)}
+                    className={`flex gap-3 items-center rounded-xl border p-2 cursor-pointer ${
+                      activo ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'
+                    }`}
+                  >
+                    {v.fotoUrl ? (
+                      <img src={v.fotoUrl} alt={`${v.marca} ${v.modelo}`} className="w-14 h-14 rounded-lg object-cover" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg bg-gray-100 text-[10px] text-gray-500 flex items-center justify-center">
+                        Sin foto
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <span className="text-xs font-bold text-blue-700">{v.codigo}</span>
+                      <p className="text-sm text-gray-900">
+                        {v.marca} {v.modelo} · {v.anio}
+                      </p>
+                    </div>
+                    {v.estado === 'vendido' && (
+                      <span className="text-[11px] font-medium text-gray-600 bg-gray-100 rounded px-2 py-0.5">Vendido</span>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div>
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Categoría</h2>
@@ -317,22 +396,19 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
           />
         </div>
 
-        {modo === 'gasto' && (
         <div>
-          <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">¿A qué corresponde?</h2>
-          <Opciones
-            etiqueta="¿A qué corresponde?"
-            columnas={2}
-            opciones={[
-              { id: 'general', nombre: 'General del negocio' },
-              { id: 'vehiculo', nombre: 'Un vehículo' },
-              { id: 'varios', nombre: 'Varios vehículos' },
-            ]}
-            seleccionada={alcance}
-            onElegir={(id) => setAlcance(id as 'general' | 'vehiculo' | 'varios')}
+          <label htmlFor="gasto-descripcion" className="block text-xs font-semibold text-gray-700 mb-1">
+            Descripción (opcional)
+          </label>
+          <input
+            id="gasto-descripcion"
+            type="text"
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
           />
         </div>
-        )}
+
         {modo === 'gasto' && (alcance === 'vehiculo' || alcance === 'varios') && (
           <div className="space-y-2">
             <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Proveedor (opcional)</h2>
@@ -403,9 +479,16 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
           </p>
         )}
 
-        <Boton anchoCompleto disabled={!puedeConfirmar} guardando={guardando} onClick={intentarConfirmar}>
-          Confirmar
-        </Boton>
+        {confirmarFijo ? (
+          <div
+            className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-4 pt-3"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+          >
+            <div className="max-w-md mx-auto">{botonConfirmar}</div>
+          </div>
+        ) : (
+          botonConfirmar
+        )}
 
         {avisoNegativo && (
           <Dialogo titulo="Saldo negativo" onCerrar={() => setAvisoNegativo(null)} guardando={guardando}>
@@ -423,51 +506,6 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
           </Dialogo>
         )}
 
-        {alcance === 'varios' && (
-          <FilasVehiculoMonto
-            total={montoNumero}
-            vehiculos={vehiculos}
-            filas={filasVarios}
-            onChange={setFilasVarios}
-          />
-        )}
-
-        {alcance === 'vehiculo' && (
-          <div>
-            <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Elegí el vehículo</h2>
-            <div className="space-y-2">
-              {vehiculosOrdenados.map((v) => {
-                const activo = vehiculoId === v.id;
-                return (
-                  <article
-                    key={v.id}
-                    onClick={() => setVehiculoId(v.id)}
-                    className={`flex gap-3 items-center rounded-xl border p-2 cursor-pointer ${
-                      activo ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'
-                    }`}
-                  >
-                    {v.fotoUrl ? (
-                      <img src={v.fotoUrl} alt={`${v.marca} ${v.modelo}`} className="w-14 h-14 rounded-lg object-cover" />
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg bg-gray-100 text-[10px] text-gray-500 flex items-center justify-center">
-                        Sin foto
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <span className="text-xs font-bold text-blue-700">{v.codigo}</span>
-                      <p className="text-sm text-gray-900">
-                        {v.marca} {v.modelo} · {v.anio}
-                      </p>
-                    </div>
-                    {v.estado === 'vendido' && (
-                      <span className="text-[11px] font-medium text-gray-600 bg-gray-100 rounded px-2 py-0.5">Vendido</span>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </section>
     </div>
   );

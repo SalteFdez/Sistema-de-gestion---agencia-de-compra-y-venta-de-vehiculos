@@ -19,7 +19,8 @@ describe('VenderVehiculoView: Guardando…', () => {
     render(<VenderVehiculoView vehiculos={vehiculos} cuentas={cuentas} onVolver={vi.fn()} onRegistrar={onRegistrar} />);
 
     llenarVenta();
-    fireEvent.click(screen.getByRole('button', { name: /^confirmar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^continuar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
 
     const guardando = screen.getByRole('button', { name: 'Guardando…' });
     expect(guardando).toBeDisabled();
@@ -32,10 +33,12 @@ describe('VenderVehiculoView: Guardando…', () => {
     render(<VenderVehiculoView vehiculos={vehiculos} cuentas={cuentas} onVolver={vi.fn()} onRegistrar={onRegistrar} />);
 
     llenarVenta();
-    fireEvent.click(screen.getByRole('button', { name: /^confirmar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^continuar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Sin conexión');
-    expect(screen.getByRole('button', { name: /^confirmar$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /confirmar venta/i })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /^corregir$/i }));
     expect(screen.getByLabelText(/precio de venta/i)).toHaveValue('$ 1.500.000');
   });
 });

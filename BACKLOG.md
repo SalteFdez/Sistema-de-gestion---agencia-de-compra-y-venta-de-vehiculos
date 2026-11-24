@@ -62,7 +62,8 @@ Sistema de gestión interna para una agencia de compra y venta de vehículos usa
 4. **UX-04 · Inicio nuevo y navegación** — Tarjeta de plata y avisos, 4 acciones principales, barra inferior, atrás del celular. Ver §2.1–2.2. Requiere: UX-03
 4c. **UX-09a · Vehículos primero** *(prioridad: antes de UX-05; pedido 2026-11-24)* — La app abre en Vehículos (En stock); barra Vehículos · Caja · Movimientos · Más; "Cargar stock existente" pasa a Más. Requiere: UX-04
    - **UX-09b · Compartir y descargar fotos** — Compartir las fotos de un auto con un toque (estados de WhatsApp, historias de Instagram/Facebook) desde la tarjeta y la galería, con descarga cuando el equipo no puede compartir. Requiere: UX-09a
-5. **UX-05 · Formularios de carga** — Orden de Gasto, Confirmar al final, "Cargar otro", Vender con ganancia estimada y revisión. Ver §2.3. Requiere: UX-03
+5. **UX-05a · Formularios de carga (Gasto, Ingreso, Comprar)** — Gasto e Ingreso en orden nuevo con Confirmar al final y "Cargar otro"; Comprar con "Sacar foto" arriba y datos de a dos. Ver §2.3. Requiere: UX-03b
+   - **UX-05b · Vender con ganancia estimada y revisión** — Buscador para elegir el auto, botón Vender en el detalle, costo real y ganancia estimada en vivo, paso "Revisá antes de confirmar". Requiere: UX-05a
 6. **UX-06 · Detalle del vehículo** — Números clave arriba, acciones, secciones, Anular al final. Ver §3. Requiere: UX-03
 7. **UX-07 · Listas** — Vehículos compacta, Movimientos por día, Cuotas con Llamar/WhatsApp, Ganancia con gráfico. Ver §3. Requiere: UX-03
 8. **UX-08 · PWA** — Íconos PNG, safe areas, feedback táctil. Ver §4. Requiere: UX-01

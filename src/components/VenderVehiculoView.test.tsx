@@ -30,7 +30,7 @@ describe('VenderVehiculoView: elegir vehículo', () => {
 
     expect(screen.getByRole('heading', { name: /datos de la venta/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/precio de venta/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /confirmar/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /continuar/i })).toBeDisabled();
   });
 
   it('con precio y cobros que cierran, Confirmar se habilita', () => {
@@ -41,7 +41,7 @@ describe('VenderVehiculoView: elegir vehículo', () => {
     fireEvent.click(screen.getByText('MC-001'));
     fireEvent.change(screen.getByLabelText(/precio de venta/i), { target: { value: '6000000' } });
 
-    expect(screen.getByRole('button', { name: /confirmar/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /continuar/i })).toBeEnabled();
   });
 
   it('al confirmar, guarda la venta y muestra el código, el resumen y la ganancia', async () => {
@@ -54,7 +54,8 @@ describe('VenderVehiculoView: elegir vehículo', () => {
 
     fireEvent.click(screen.getByText('MC-001'));
     fireEvent.change(screen.getByLabelText(/precio de venta/i), { target: { value: '6000000' } });
-    fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
 
     expect(await screen.findByTestId('codigo-venta')).toHaveTextContent('MC-001');
     expect(screen.getByText('Vendiste MC-001 en $ 6.000.000 · Entraron $ 6.000.000 en Caja efectivo')).toBeInTheDocument();
@@ -81,12 +82,17 @@ describe('VenderVehiculoView: elegir vehículo', () => {
 
     fireEvent.click(screen.getByText('MC-001'));
     fireEvent.change(screen.getByLabelText(/precio de venta/i), { target: { value: '6000000' } });
-    fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('MC-001 ya está vendido. No se guardó nada.');
     expect(screen.queryByTestId('codigo-venta')).not.toBeInTheDocument();
+    // El error aparece en la revisión, que sigue lista para reintentar
+    expect(screen.getByRole('button', { name: /confirmar venta/i })).toBeEnabled();
+    // Corregir vuelve a los datos con lo cargado
+    fireEvent.click(screen.getByRole('button', { name: /^corregir$/i }));
     expect(screen.getByLabelText(/precio de venta/i)).toHaveValue('$ 6.000.000');
-    expect(screen.getByRole('button', { name: /confirmar/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /continuar/i })).toBeEnabled();
   });
 
   it('sin cuentas cargadas, avisa en lugar del formulario de venta', () => {

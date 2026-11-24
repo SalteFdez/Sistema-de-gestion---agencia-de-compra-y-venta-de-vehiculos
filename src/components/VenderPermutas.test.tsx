@@ -75,7 +75,7 @@ describe('VenderVehiculoView: permutas', () => {
     fireEvent.change(screen.getByLabelText('Año'), { target: { value: '2015' } });
     fireEvent.change(screen.getByLabelText('Valor pactado ($)'), { target: { value: '3500000' } });
 
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   });
 
   it('Confirmar queda deshabilitado con un valor pactado 0 o con datos del recibido sin completar', () => {
@@ -87,11 +87,11 @@ describe('VenderVehiculoView: permutas', () => {
     fireEvent.change(screen.getByLabelText('Modelo'), { target: { value: '110cc' } });
     fireEvent.change(screen.getByLabelText('Año'), { target: { value: '2015' } });
     fireEvent.change(screen.getByLabelText('Valor pactado ($)'), { target: { value: '0' } });
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText('Valor pactado ($)'), { target: { value: '1000000' } });
     fireEvent.change(screen.getByLabelText('Marca'), { target: { value: '' } });
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   });
 
   it('si las permutas cubren todo el precio, se puede confirmar sin cobros', () => {
@@ -104,7 +104,7 @@ describe('VenderVehiculoView: permutas', () => {
     fireEvent.change(screen.getByLabelText('Año'), { target: { value: '2015' } });
     fireEvent.change(screen.getByLabelText('Valor pactado ($)'), { target: { value: '1000000' } });
 
-    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Continuar' })).toBeEnabled();
   });
 
   it('al confirmar manda las permutas y el resumen nombra todos los códigos que entran', async () => {
@@ -133,7 +133,8 @@ describe('VenderVehiculoView: permutas', () => {
     fireEvent.change(screen.getAllByLabelText('Año')[1], { target: { value: '2012' } });
     fireEvent.change(screen.getAllByLabelText('Valor pactado ($)')[1], { target: { value: '2500000' } });
     fireEvent.change(screen.getByLabelText('Monto pago 1'), { target: { value: '4500000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar venta/i }));
 
     expect(onRegistrar).toHaveBeenCalledWith(expect.objectContaining({
       vehiculoId: 'v14',

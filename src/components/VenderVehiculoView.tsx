@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type {
   VehiculoItem,
   RegistrarVentaConPermutasParams,
@@ -9,6 +9,7 @@ import { formatMoney, parseMoneyInput } from '../lib/format/money';
 import { RepartoCuentas, type FilaReparto } from './RepartoCuentas';
 import { dividirCuotas } from '../lib/vehiculos/cuotas';
 import { validarFinanciacion, hoyBuenosAires } from '../lib/vehiculos/financiacion';
+import { coincideBusqueda } from '../lib/vehiculos/busqueda';
 import { Encabezado } from './ui/Encabezado';
 import { Boton } from './ui/Boton';
 import { InputMonto } from './ui/InputMonto';
@@ -19,6 +20,16 @@ export interface VenderVehiculoViewProps {
   cuentas: CuentaItem[];
   onVolver: () => void;
   onRegistrar?: (params: RegistrarVentaConPermutasParams) => Promise<RegistrarVentaConPermutasResult>;
+  /** Auto ya elegido (venta abierta desde su detalle): arranca en los datos y Volver regresa a quien la abrió */
+  vehiculoInicial?: VehiculoItem;
+  /** Costo real de un auto (de obtenerDetalle) cuando la lista no lo trae */
+  onObtenerCosto?: (id: string) => Promise<number>;
+  /** Volver a Caja desde la confirmación (si no viene, se usa onVolver) */
+  onTerminar?: () => void;
+  /** Paso controlado desde fuera (la revisión tiene entrada en el historial) */
+  paso?: 'datos' | 'revision';
+  onContinuar?: () => void;
+  onCorregir?: () => void;
 }
 
 interface Confirmacion {
@@ -72,8 +83,45 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   cuentas,
   onVolver,
   onRegistrar,
+  vehiculoInicial,
+  onObtenerCosto,
+  onTerminar,
+  paso: pasoControlado,
+  onContinuar,
+  onCorregir,
 }) => {
-  const [elegido, setElegido] = useState<VehiculoItem | null>(null);
+  // Paso de la venta: datos o revisión. Si quien usa el componente lo controla (historial), manda él.
+  const [pasoInterno, setPasoInterno] = useState<'datos' | 'revision'>('datos');
+  const paso = pasoControlado ?? pasoInterno;
+  const irRevision = () => (onContinuar ? onContinuar() : setPasoInterno('revision'));
+  const corregir = () => (onCorregir ? onCorregir() : setPasoInterno('datos'));
+  const [elegido, setElegido] = useState<VehiculoItem | null>(vehiculoInicial ?? null);
+  // Costo real del auto elegido: cargando, listo (con su valor) o error
+  const [costo, setCosto] = useState<{ estado: 'cargando' | 'listo' | 'error'; valor?: number } | null>(null);
+  useEffect(() => {
+    if (!elegido) {
+      setCosto(null);
+      return;
+    }
+    if (elegido.costoReal !== undefined) {
+      setCosto({ estado: 'listo', valor: elegido.costoReal });
+      return;
+    }
+    if (!onObtenerCosto) {
+      setCosto({ estado: 'error' });
+      return;
+    }
+    let vigente = true;
+    setCosto({ estado: 'cargando' });
+    onObtenerCosto(elegido.id)
+      .then((valor) => vigente && setCosto({ estado: 'listo', valor }))
+      .catch(() => vigente && setCosto({ estado: 'error' }));
+    return () => {
+      vigente = false;
+    };
+    // Solo cuando cambia el auto elegido
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elegido?.id]);
   const [precio, setPrecio] = useState<number | null>(null);
   const [comprador, setComprador] = useState<string>('');
   const [cobros, setCobros] = useState<FilaReparto[]>([]);
@@ -91,6 +139,8 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   const [cantidadCuotasTxt, setCantidadCuotasTxt] = useState<string>('');
   const [fechaPrimera, setFechaPrimera] = useState<string>(() => fechaPorDefecto());
   const [telefonoComprador, setTelefonoComprador] = useState<string>('');
+  // Buscador de la lista para elegir el auto
+  const [busqueda, setBusqueda] = useState<string>('');
 
   // Solo se pueden vender los vehículos en stock
   const enStock = vehiculos.filter((v) => v.estado === 'en_stock');
@@ -252,7 +302,7 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
           </p>
           <button
             type="button"
-            onClick={onVolver}
+            onClick={onTerminar ?? onVolver}
             className="w-full mt-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium text-sm rounded-xl"
           >
             Volver a Caja
@@ -264,7 +314,7 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <Encabezado titulo="Vender vehículo" onVolver={elegido ? () => setElegido(null) : onVolver} />
+      <Encabezado titulo="Vender vehículo" onVolver={elegido && !vehiculoInicial ? () => setElegido(null) : onVolver} />
 
       {elegido && cuentas.length === 0 ? (
         <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
@@ -272,11 +322,91 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
             No hay cuentas cargadas todavía. Cargá una cuenta para poder registrar una venta.
           </p>
         </div>
+      ) : elegido && paso === 'revision' ? (
+        <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+          <h2 className="text-base font-semibold text-gray-900">Revisá antes de confirmar</h2>
+          <dl className="text-sm text-gray-800 space-y-1">
+            <div className="flex justify-between gap-2">
+              <dt className="text-gray-500">Auto</dt>
+              <dd>{`${elegido.codigo} · ${elegido.marca} ${elegido.modelo}`}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-gray-500">Comprador</dt>
+              <dd>{comprador.trim() || 'Sin comprador'}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-gray-500">Precio</dt>
+              <dd>{formatMoney(precioNumero)}</dd>
+            </div>
+          </dl>
+
+          {permutasActivas.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Permutas</h3>
+              <ul className="text-sm text-gray-800 space-y-1">
+                {permutasActivas.map((p, i) => (
+                  <li key={p.key}>{`Auto recibido ${i + 1} · ${p.marca} ${p.modelo} · ${formatMoney(parseMoneyInput(p.valor))}`}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {financia && financiadoNumero > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Financiado</h3>
+              <p className="text-sm text-gray-800">{`Financiado ${formatMoney(financiadoNumero)} en ${cuotasNumero} cuotas`}</p>
+              <ul className="text-sm text-gray-800 space-y-1">
+                {cuotasPreview.map((c) => (
+                  <li key={c.numero}>{`${c.numero} · ${formatoFecha(c.fechaVencimiento)} · ${formatMoney(c.monto)}`}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div>
+            <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Cobros por cuenta</h3>
+            <ul className="text-sm text-gray-800 space-y-1">
+              {cobros.map((c) => {
+                const nombre = cuentas.find((k) => k.id === c.cuentaId)?.nombre ?? '';
+                return <li key={c.cuentaId}>{`${nombre} · ${formatMoney(parseMoneyInput(c.monto))}`}</li>;
+              })}
+            </ul>
+          </div>
+
+          {costo?.estado === 'listo' && costo.valor !== undefined && (
+            <p className={`text-base font-semibold ${precioNumero - costo.valor < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+              {`Ganancia estimada ${formatMoney(precioNumero - costo.valor)}`}
+            </p>
+          )}
+
+          {errorVenta && (
+            <p role="alert" className="text-sm text-red-700">
+              {errorVenta}
+            </p>
+          )}
+
+          <Boton anchoCompleto guardando={guardando} disabled={!puedeConfirmar} onClick={() => void confirmar()}>
+            Confirmar venta
+          </Boton>
+          <Boton anchoCompleto variante="secundario" onClick={corregir}>
+            Corregir
+          </Boton>
+        </section>
       ) : elegido ? (
         <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
           <h2 className="text-base font-semibold text-gray-900">
             Datos de la venta · {elegido.codigo}
           </h2>
+          {costo?.estado === 'cargando' && <p className="text-sm text-gray-600">Calculando costo…</p>}
+          {costo?.estado === 'error' && <p className="text-sm text-amber-700">No se pudo calcular el costo</p>}
+          {costo?.estado === 'listo' && costo.valor !== undefined && (
+            <p className="text-sm text-gray-800">Costo real {formatMoney(costo.valor)}</p>
+          )}
+          {costo?.estado === 'listo' && costo.valor !== undefined && precioNumero > 0 && (
+            <p className={`text-sm font-semibold ${precioNumero - costo.valor < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+              Ganancia estimada {formatMoney(precioNumero - costo.valor)}
+            </p>
+          )}
 
           <div>
             <label htmlFor="venta-precio" className="block text-xs font-semibold text-gray-700 mb-1">
@@ -469,25 +599,29 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
             </p>
           )}
 
-          <Boton
-            anchoCompleto
-            disabled={!puedeConfirmar}
-            guardando={guardando}
-            onClick={() => void confirmar()}
-          >
-            Confirmar
+          <Boton anchoCompleto disabled={!puedeConfirmar} onClick={irRevision}>
+            Continuar
           </Boton>
         </section>
       ) : (
         <>
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Elegí el vehículo</h2>
+          <input
+            type="search"
+            role="searchbox"
+            aria-label="Buscar vehículos"
+            placeholder="Buscar por código, marca, modelo o patente"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 mb-3 text-base bg-white"
+          />
           {enStock.length === 0 && (
             <p className="text-sm text-gray-600 bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
               No hay vehículos en stock para vender.
             </p>
           )}
           <div className="space-y-3">
-            {enStock.map((v) => (
+            {enStock.filter((v) => coincideBusqueda(v, busqueda)).map((v) => (
               <article
                 key={v.id}
                 onClick={() => setElegido(v)}
