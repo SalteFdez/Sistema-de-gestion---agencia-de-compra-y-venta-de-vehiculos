@@ -6,6 +6,9 @@ import type { DeviceAuthService } from '../lib/auth/device-auth';
 import type { PinLockout } from '../lib/auth/pin-lockout';
 import type { SessionInactivityTracker } from '../lib/auth/session-inactivity';
 
+// Tras desbloquear la app se abre en Vehículos: estas pruebas pasan a Caja (el inicio de siempre) antes de seguir
+const irACaja = () => fireEvent.click(screen.getByRole('button', { name: /^caja$/i }));
+
 describe('AuthFlow UI Integration', () => {
   let mockAuthService: Partial<DeviceAuthService>;
   let mockLockout: Partial<PinLockout>;
@@ -188,9 +191,12 @@ describe('AuthFlow UI Integration', () => {
     fireEvent.click(screen.getByRole('button', { name: '3' }));
     fireEvent.click(screen.getByRole('button', { name: '4' }));
 
+    // Al desbloquear se abre en Vehículos; el saludo está en Caja
     await waitFor(() => {
-      expect(screen.getByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Vehículos' })).toBeInTheDocument();
     });
+    irACaja();
+    expect(screen.getByText(/hola, agustín fernandez/i)).toBeInTheDocument();
 
     expect(mockLockout.recordSuccess).toHaveBeenCalled();
     expect(mockInactivity.markUnlocked).toHaveBeenCalled();
@@ -247,7 +253,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    expect(screen.getByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Vehículos' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /más/i }));
     const changePinBtn = screen.getByRole('button', { name: /cambiar pin/i });
     expect(changePinBtn).toBeInTheDocument();
@@ -291,6 +297,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
+    irACaja();
     const btnBalances = screen.getByRole('button', { name: /balances/i });
     expect(btnBalances).toBeInTheDocument();
 
@@ -332,7 +339,8 @@ describe('AuthFlow UI Integration', () => {
 
     expect(await screen.findByRole('heading', { name: /vehículos/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+    // Vehículos es pestaña raíz: se vuelve a Caja con la barra, no con Volver
+    irACaja();
 
     expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
   });
@@ -501,6 +509,35 @@ describe('AuthFlow UI Integration', () => {
     });
   });
 
+  describe('Arranque en Vehículos', () => {
+    it('al desbloquear, la app abre en Vehículos con el filtro En stock y carga el listado', async () => {
+      mockAuthService = {
+        isDeviceLinked: vi.fn().mockReturnValue(true),
+        getLinkedUser: vi.fn().mockReturnValue({ id: 'u1', email: 'agustin@machoman.local', nombre: 'Agustín Fernandez' }),
+        validatePin: vi.fn().mockResolvedValue(true),
+      };
+      mockInactivity.isUnlocked = vi.fn().mockReturnValue(true);
+      const vehiculosService = {
+        listarVehiculos: vi.fn().mockResolvedValue([]),
+        obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
+        listarMovimientos: vi.fn().mockResolvedValue([]),
+      };
+
+      render(
+        <AuthFlow
+          authService={mockAuthService as DeviceAuthService}
+          lockout={mockLockout as PinLockout}
+          inactivity={mockInactivity as SessionInactivityTracker}
+          vehiculosService={vehiculosService as unknown as any}
+        />
+      );
+
+      expect(await screen.findByRole('heading', { name: 'Vehículos' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'En stock' })).toHaveAttribute('aria-pressed', 'true');
+      expect(vehiculosService.listarVehiculos).toHaveBeenCalled();
+    });
+  });
+
   describe('Ver vehículos después de comprar', () => {
     it('desde la confirmación de compra, "Ver vehículos" lleva al listado recargado con el auto nuevo', async () => {
       mockAuthService = {
@@ -536,7 +573,7 @@ describe('AuthFlow UI Integration', () => {
         />
       );
 
-      fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
+      irACaja(); fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
       fireEvent.change(await screen.findByLabelText(/marca/i), { target: { value: 'Fiat' } });
       fireEvent.change(screen.getByLabelText(/modelo/i), { target: { value: 'Uno' } });
       fireEvent.change(screen.getByLabelText(/año/i), { target: { value: '2010' } });
@@ -629,6 +666,7 @@ describe('AuthFlow UI Integration', () => {
         />
       );
 
+      irACaja();
       expect(await screen.findByRole('button', { name: /cuotas por cobrar.*1 vencida/i })).toBeInTheDocument();
     });
   });
@@ -670,6 +708,7 @@ describe('AuthFlow UI Integration', () => {
         />
       );
 
+      irACaja();
       const boton = await screen.findByRole('button', { name: /pendientes de asignar.*\$ 190\.000/i });
       fireEvent.click(boton);
 
@@ -734,7 +773,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /balances/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /balances/i }));
 
     expect(await screen.findByText('$ 12.500.000 · 3 vehículos')).toBeInTheDocument();
     expect(screen.getByTestId('total-disponible')).toHaveTextContent('$ 1.500.000');
@@ -779,8 +818,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
-
+    // La app abre en Vehículos y ya pidió el listado: falla y se ofrece reintentar
     expect(await screen.findByText(/no se pudo cargar/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
 
@@ -822,7 +860,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /balances/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /balances/i }));
 
     expect(await screen.findByText(/no se pudo cargar el inventario/i)).toBeInTheDocument();
     expect(screen.getByTestId('total-disponible')).toHaveTextContent('$ 1.500.000');
@@ -858,7 +896,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    // La app ya abre en Vehículos: el listado se pide una sola vez, al entrar
     await screen.findByText('MC-005');
 
     fireEvent.change(screen.getByLabelText('Elegir foto de MC-005'), {
@@ -890,7 +928,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
 
     expect(await screen.findByRole('heading', { name: /comprar vehículo/i })).toBeInTheDocument();
 
@@ -928,7 +966,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
 
     expect(await screen.findByLabelText(/cuenta de pago 1/i)).toHaveValue('c1');
     expect(screen.queryByText(/no hay cuentas cargadas/i)).not.toBeInTheDocument();
@@ -974,7 +1012,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /comprar vehículo/i }));
     await screen.findByLabelText(/cuenta de pago 1/i);
 
     fireEvent.change(screen.getByLabelText(/marca/i), { target: { value: 'Fiat' } });
@@ -1024,7 +1062,6 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
     fireEvent.click(await screen.findByText('MC-021'));
     // Esperamos el contenido ya cargado (el título también existe mientras carga)
     expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();
@@ -1154,7 +1191,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
 
     expect(await screen.findByRole('heading', { name: /vender vehículo/i })).toBeInTheDocument();
 
@@ -1202,7 +1239,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
     fireEvent.click(await screen.findByText('MC-030'));
     fireEvent.change(await screen.findByLabelText(/precio de venta/i), { target: { value: '500000' } });
     fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
@@ -1287,8 +1324,8 @@ describe('AuthFlow UI Integration', () => {
       crearCuenta: vi.fn(),
     };
     const mockVehiculosService = {
-      // Primera carga: en stock; después de la venta, vendido
-      listarVehiculos: vi.fn().mockResolvedValueOnce([enStock]).mockResolvedValue([vendido]),
+      // Carga al entrar a la app y al abrir Vender: en stock; después de la venta, vendido
+      listarVehiculos: vi.fn().mockResolvedValueOnce([enStock]).mockResolvedValueOnce([enStock]).mockResolvedValue([vendido]),
       obtenerInventario: vi.fn().mockResolvedValue({ total: 0, cantidad: 0 }),
       registrarVentaConPermutas: vi.fn().mockResolvedValue({ success: true, ventaId: 'ven50', codigo: 'MC-050', ganancia: 0 }),
     };
@@ -1303,12 +1340,12 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /vender vehículo/i }));
     fireEvent.click(await screen.findByText('MC-050'));
     fireEvent.change(await screen.findByLabelText(/precio de venta/i), { target: { value: '5000000' } });
     fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
     await screen.findByTestId('codigo-venta');
-    fireEvent.click(screen.getByRole('button', { name: /volver al inicio/i }));
+    fireEvent.click(screen.getByRole('button', { name: /volver a caja/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
     await screen.findByRole('button', { name: 'Vendidos' });
@@ -1338,7 +1375,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /registrar gasto/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /registrar gasto/i }));
 
     expect(await screen.findByRole('heading', { name: /registrar gasto/i })).toBeInTheDocument();
 
@@ -1383,7 +1420,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /registrar gasto/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /registrar gasto/i }));
     fireEvent.change(await screen.findByLabelText(/monto/i), { target: { value: '250000' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Mecánica' }));
     fireEvent.click(screen.getByRole('button', { name: /caja efectivo/i }));
@@ -1467,7 +1504,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /registrar ingreso/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /registrar ingreso/i }));
 
     expect(await screen.findByRole('heading', { name: /registrar ingreso/i })).toBeInTheDocument();
 
@@ -1512,7 +1549,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /registrar ingreso/i }));
+    irACaja(); fireEvent.click(screen.getByRole('button', { name: /registrar ingreso/i }));
     fireEvent.change(await screen.findByLabelText(/monto/i), { target: { value: '80000' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Comisión' }));
     fireEvent.click(screen.getByRole('button', { name: /banco/i }));
@@ -1554,7 +1591,8 @@ describe('AuthFlow UI Integration', () => {
     expect(await screen.findByRole('heading', { name: 'Movimientos' })).toBeInTheDocument();
     expect(mockVehiculosService.listarMovimientos).toHaveBeenCalledWith(0);
 
-    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+    // Movimientos es pestaña raíz: se vuelve a Caja con la barra, no con Volver
+    irACaja();
 
     expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
   });
@@ -1689,8 +1727,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
-
+    // La app abre en Vehículos y pide el listado al entrar (una sola vez)
     expect(await screen.findByText('MC-009')).toBeInTheDocument();
     expect(mockVehiculosService.listarVehiculos).toHaveBeenCalledTimes(1);
   });
@@ -1725,7 +1762,8 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    // "Cargar stock existente" está en Más
+    fireEvent.click(screen.getByRole('button', { name: /^más$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /cargar stock existente/i }));
     fireEvent.change(screen.getByLabelText(/marca/i), { target: { value: 'Renault' } });
     fireEvent.change(screen.getByLabelText(/modelo/i), { target: { value: 'Clio' } });
@@ -1779,7 +1817,8 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
+    // "Cargar stock existente" está en Más
+    fireEvent.click(screen.getByRole('button', { name: /^más$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /cargar stock existente/i }));
     fireEvent.change(screen.getByLabelText(/marca/i), { target: { value: 'Renault' } });
     fireEvent.change(screen.getByLabelText(/modelo/i), { target: { value: 'Clio' } });

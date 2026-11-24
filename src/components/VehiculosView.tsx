@@ -1,15 +1,20 @@
 import React, { useRef, useState } from 'react';
-import type {
-  VehiculoItem,
-  CargarStockParams,
-  CargarStockResult,
-  AgregarFotoResult,
-} from '../lib/vehiculos/vehiculos-service';
+import type { VehiculoItem, AgregarFotoResult } from '../lib/vehiculos/vehiculos-service';
 import { comprimirFotoEnNavegador } from '../lib/vehiculos/comprimir-foto';
-import { CargarStockForm } from './CargarStockForm';
 import { coincideBusqueda } from '../lib/vehiculos/busqueda';
+import { prepararArchivos, compartir } from '../lib/vehiculos/compartir-fotos';
 import { Encabezado } from './ui/Encabezado';
 import { Boton } from './ui/Boton';
+
+/** Lo que devuelve el servicio al pedir las fotos vigentes de un auto para compartir */
+export interface FotosParaCompartirRes {
+  success: boolean;
+  error?: string;
+  codigo?: string;
+  marca?: string;
+  modelo?: string;
+  urls: string[];
+}
 import { BadgeEstado } from './ui/BadgeEstado';
 import { Cargando } from './ui/Cargando';
 import { ErrorReintentar } from './ui/ErrorReintentar';
@@ -20,9 +25,11 @@ export interface VehiculosViewProps {
   /** Mientras llegan los vehículos: se muestra "Cargando…" en vez de una lista vacía */
   cargando?: boolean;
   onReintentar?: () => void;
-  onVolver: () => void;
-  onCargarStock?: (params: CargarStockParams) => Promise<CargarStockResult>;
+  /** Solo si Vehículos se muestra como pantalla secundaria; como pestaña raíz no hay Volver */
+  onVolver?: () => void;
   onAgregarFoto?: (id: string, foto: Blob) => Promise<AgregarFotoResult>;
+  /** Pide las fotos vigentes de un auto (URLs firmadas, la principal primero) para compartirlas */
+  onPedirFotos?: (id: string) => Promise<FotosParaCompartirRes>;
   comprimirFoto?: (foto: Blob) => Promise<Blob>;
   onAbrirDetalle?: (id: string) => void;
   /** Filtro por estado; si lo maneja quien navega, se pasa así sobrevive al detalle */
@@ -41,8 +48,8 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
   cargando = false,
   onReintentar,
   onVolver,
-  onCargarStock,
   onAgregarFoto,
+  onPedirFotos,
   comprimirFoto = comprimirFotoEnNavegador,
   onAbrirDetalle,
   filtro,
@@ -50,7 +57,6 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
   busqueda,
   onCambiarBusqueda,
 }) => {
-  const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [filtroInterno, setFiltroInterno] = useState<FiltroEstado>('stock');
   const filtroEstado = filtro ?? filtroInterno;
   const setFiltroEstado = (f: FiltroEstado) => {
@@ -96,23 +102,70 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
     }
   };
 
+  // Compartir fotos: estado por auto (preparando, o listo para el segundo toque) y aviso en pantalla
+  const [compartiendo, setCompartiendo] = useState<Record<string, 'preparando' | 'listo'>>({});
+  const [listasParaCompartir, setListasParaCompartir] = useState<Record<string, { archivos: File[]; texto: string }>>({});
+  const [avisoCompartir, setAvisoCompartir] = useState<Record<string, string>>({});
+
+  const fijarAviso = (id: string, aviso: string) => setAvisoCompartir((prev) => ({ ...prev, [id]: aviso }));
+  const quitarEstado = (id: string) =>
+    setCompartiendo((prev) => {
+      const { [id]: _quitado, ...resto } = prev;
+      return resto;
+    });
+
+  const compartirAuto = async (v: VehiculoItem) => {
+    if (!onPedirFotos) return;
+    fijarAviso(v.id, '');
+    setCompartiendo((prev) => ({ ...prev, [v.id]: 'preparando' }));
+    const texto = `${v.marca} ${v.modelo} ${v.anio}`;
+    let quedaListo = false;
+    try {
+      const pedido = await onPedirFotos(v.id);
+      if (!pedido.success) {
+        fijarAviso(v.id, pedido.error ?? 'No se pudieron preparar las fotos. Podés intentar de nuevo.');
+        return;
+      }
+      const total = pedido.urls.length;
+      const { archivos, fallidas } = await prepararArchivos(pedido.urls, pedido.codigo ?? v.codigo);
+      if (archivos.length === 0) {
+        fijarAviso(v.id, `No se pudo preparar ${total === 1 ? 'la foto' : 'ninguna foto'}. Podés intentar de nuevo.`);
+        return;
+      }
+      if (fallidas > 0) {
+        fijarAviso(v.id, `No se pudo preparar ${fallidas} de ${total} fotos`);
+      }
+      const estado = await compartir(archivos, texto);
+      if (estado === 'pendiente') {
+        // El toque venció mientras se bajaban las fotos: el segundo toque las comparte sin esperar
+        setListasParaCompartir((prev) => ({ ...prev, [v.id]: { archivos, texto } }));
+        setCompartiendo((prev) => ({ ...prev, [v.id]: 'listo' }));
+        quedaListo = true;
+      }
+    } catch {
+      fijarAviso(v.id, 'No se pudo compartir. Podés intentar de nuevo.');
+    } finally {
+      if (!quedaListo) quitarEstado(v.id);
+    }
+  };
+
+  // Segundo toque: comparte con las fotos ya armadas, directo desde el toque
+  const compartirAhora = async (v: VehiculoItem) => {
+    const lista = listasParaCompartir[v.id];
+    if (!lista) return;
+    const estado = await compartir(lista.archivos, lista.texto);
+    if (estado !== 'pendiente') {
+      setListasParaCompartir((prev) => {
+        const { [v.id]: _quitada, ...resto } = prev;
+        return resto;
+      });
+      quitarEstado(v.id);
+    }
+  };
+
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
       <Encabezado titulo="Vehículos" onVolver={onVolver} />
-
-      <div className="mb-4">
-        {mostrarFormulario ? (
-          <CargarStockForm
-            onGuardar={onCargarStock}
-            onVolverAlListado={() => setMostrarFormulario(false)}
-            comprimirFoto={comprimirFoto}
-          />
-        ) : (
-          <Boton anchoCompleto onClick={() => setMostrarFormulario(true)}>
-            Cargar stock existente
-          </Boton>
-        )}
-      </div>
 
       {errorCarga && (
         <div className="mb-4">
@@ -245,6 +298,33 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
                 <div className="mt-2">
                   <BadgeEstado estado={v.estado} />
                 </div>
+                {v.fotoUrl && (
+                  <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                    {compartiendo[v.id] === 'listo' && listasParaCompartir[v.id] ? (
+                      <Boton anchoCompleto onClick={() => void compartirAhora(v)}>
+                        Compartir ahora (fotos listas)
+                      </Boton>
+                    ) : (
+                      <Boton
+                        anchoCompleto
+                        variante="secundario"
+                        guardando={compartiendo[v.id] === 'preparando'}
+                        textoGuardando="Preparando…"
+                        onClick={() => void compartirAuto(v)}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                        </svg>
+                        Compartir
+                      </Boton>
+                    )}
+                    {avisoCompartir[v.id] && (
+                      <p role="alert" className="text-xs text-red-700 mt-1">
+                        {avisoCompartir[v.id]}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </article>
           );

@@ -22,7 +22,8 @@ export type Vista =
   | 'cobrar_cuota'
   | 'ganancia_mensual'
   | 'ganancia_mes'
-  | 'mas';
+  | 'mas'
+  | 'cargar_stock';
 
 export type Pestana = 'home' | 'vehiculos' | 'movimientos' | 'mas';
 
@@ -44,6 +45,8 @@ export function useNavegacion(options: UseNavegacionOptions = {}) {
 
   const pilaRef = useRef(pila);
   pilaRef.current = pila;
+  const vistaInicialRef = useRef(vistaInicial);
+  vistaInicialRef.current = vistaInicial;
   // Cuántos popstate vienen de volver() y ya están aplicados
   const internalBacks = useRef(0);
   // Marca de esta sesión de navegación: las entradas de historial de otra sesión
@@ -55,18 +58,29 @@ export function useNavegacion(options: UseNavegacionOptions = {}) {
     isUnlockedRef.current = isUnlocked;
   }, [isUnlocked]);
 
-  // Al montar, siempre arrancamos en la vista inicial en el historial
+  // Al montar, siempre arrancamos en la vista inicial en el historial.
+  // Se deja además una copia de la raíz: así el gesto atrás vuelve a la raíz y no sale de la app.
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.history.replaceState({ vista: vistaInicial, nav: sesion.current }, '', '');
+      window.history.pushState({ vista: vistaInicial, nav: sesion.current }, '', '');
     }
-  }, [vistaInicial]);
+    // Solo una vez al montar: volver a la raíz no agrega entradas
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Escuchar popstate (gesto atrás del celular o botón atrás del navegador)
   useEffect(() => {
+    // Deja de nuevo la entrada de la raíz: así el próximo atrás tampoco saca de la app
+    const reabrirRaiz = () => {
+      window.history.pushState({ vista: vistaInicialRef.current, nav: sesion.current }, '', '');
+    };
+
     const onPopState = (event: PopStateEvent) => {
       if (internalBacks.current > 0) {
         internalBacks.current--;
+        // Un volver() que aterriza en la raíz: se vuelve a dejar la entrada de la raíz
+        if (isUnlockedRef.current && pilaRef.current.length === 1) reabrirRaiz();
         return;
       }
       // Si la app está bloqueada, el bloqueo tiene prioridad y no se cambia de vista
@@ -75,10 +89,11 @@ export function useNavegacion(options: UseNavegacionOptions = {}) {
       const propia = event.state?.nav === sesion.current && event.state?.vista;
       const nuevoEstado: NavegacionState = propia
         ? { vista: event.state.vista, datos: event.state.datos }
-        : { vista: 'home' };
+        : { vista: vistaInicialRef.current };
 
       setEstado(nuevoEstado);
       setPila((prev) => (propia && prev.length > 1 ? prev.slice(0, -1) : [nuevoEstado]));
+      if (nuevoEstado.vista === vistaInicialRef.current) reabrirRaiz();
     };
 
     window.addEventListener('popstate', onPopState);

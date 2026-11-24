@@ -12,6 +12,9 @@ interface ItemPestana {
   icono: React.ReactNode;
 }
 
+// Orden de la barra: Vehículos (la pantalla principal), Caja, Movimientos y Más
+const ORDEN: Pestana[] = ['vehiculos', 'home', 'movimientos', 'mas'];
+
 export const BarraNavegacion: React.FC<BarraNavegacionProps> = ({
   pestanaActiva,
   onSeleccionar,
@@ -19,7 +22,7 @@ export const BarraNavegacion: React.FC<BarraNavegacionProps> = ({
   const pestanas: ItemPestana[] = [
     {
       id: 'home',
-      label: 'Inicio',
+      label: 'Caja',
       icono: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -33,7 +36,7 @@ export const BarraNavegacion: React.FC<BarraNavegacionProps> = ({
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
-            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+            d="M3 10h18v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9zm0 0V8a2 2 0 012-2h12v4M16 14h2"
           />
         </svg>
       ),
@@ -115,7 +118,7 @@ export const BarraNavegacion: React.FC<BarraNavegacionProps> = ({
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       <div className="max-w-md mx-auto flex items-center justify-around">
-        {pestanas.map((p) => {
+        {ORDEN.map((id) => pestanas.find((p) => p.id === id)!).map((p) => {
           const activa = pestanaActiva === p.id;
           return (
             <button

@@ -1,10 +1,13 @@
 import React, { useRef, useState } from 'react';
 import type { FotoVehiculo } from '../lib/vehiculos/vehiculos-service';
+import { prepararArchivos, compartir, descargar } from '../lib/vehiculos/compartir-fotos';
 import { Boton } from './ui/Boton';
 
 export interface GaleriaFotosProps {
   fotos: FotoVehiculo[];
   anulado: boolean;
+  /** Para compartir: código del auto (nombres MC-001-<n>.jpg) y el texto "Marca Modelo Año" */
+  paraCompartir?: { codigo: string; texto: string };
   progreso?: { hecho: number; total: number };
   /** Error de la última acción (subida, principal o quitar), para mostrarlo en la galería */
   error?: string | null;
@@ -16,6 +19,7 @@ export interface GaleriaFotosProps {
 export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
   fotos,
   anulado,
+  paraCompartir,
   progreso,
   error,
   onAgregar,
@@ -25,6 +29,10 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
   const [seleccionadaId, setSeleccionadaId] = useState<string | null>(null);
   const [confirmandoQuitar, setConfirmandoQuitar] = useState<boolean>(false);
   const [indiceVisor, setIndiceVisor] = useState<number | null>(null);
+  // Compartir / descargar: cuál acción está preparando, aviso en pantalla y las fotos listas para el segundo toque
+  const [preparando, setPreparando] = useState<'esta' | 'todas' | 'descargar' | null>(null);
+  const [avisoCompartir, setAvisoCompartir] = useState<string | null>(null);
+  const [listas, setListas] = useState<{ archivos: File[]; texto: string } | null>(null);
   const entrada = useRef<HTMLInputElement | null>(null);
   // Posición inicial del dedo al deslizar en el visor
   const inicioDedo = useRef<number | null>(null);
@@ -63,6 +71,56 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
   const principal = fotos.find((f) => f.esPrincipal) ?? fotos[0];
   const seleccionada = fotos.find((f) => f.id === seleccionadaId) ?? principal;
   const indiceSeleccionada = fotos.indexOf(seleccionada);
+
+  // Arma los archivos de las fotos indicadas (cada una con su número en la galería)
+  const armar = async (indices: number[]) => {
+    const resultados = await Promise.all(
+      indices.map((i) =>
+        fotos[i].url
+          ? prepararArchivos([fotos[i].url as string], paraCompartir?.codigo ?? '', undefined, i + 1)
+          : Promise.resolve({ archivos: [] as File[], fallidas: 1 })
+      )
+    );
+    return {
+      archivos: resultados.flatMap((r) => r.archivos),
+      fallidas: resultados.reduce((acc, r) => acc + r.fallidas, 0),
+    };
+  };
+
+  const accion = async (indices: number[], modo: 'esta' | 'todas' | 'descargar') => {
+    if (!paraCompartir) return;
+    setAvisoCompartir(null);
+    setListas(null);
+    setPreparando(modo);
+    try {
+      const { archivos, fallidas } = await armar(indices);
+      const total = indices.length;
+      if (archivos.length === 0) {
+        setAvisoCompartir(`No se pudo preparar ${total === 1 ? 'la foto' : 'ninguna foto'}. Podés intentar de nuevo.`);
+        return;
+      }
+      if (fallidas > 0) setAvisoCompartir(`No se pudo preparar ${fallidas} de ${total} fotos`);
+      if (modo === 'descargar') {
+        archivos.forEach((archivo) => descargar(archivo));
+        return;
+      }
+      const estado = await compartir(archivos, paraCompartir.texto);
+      if (estado === 'pendiente') {
+        // El toque venció mientras se bajaban las fotos: el segundo toque las comparte sin esperar
+        setListas({ archivos, texto: paraCompartir.texto });
+      }
+    } catch {
+      setAvisoCompartir('No se pudo compartir. Podés intentar de nuevo.');
+    } finally {
+      setPreparando(null);
+    }
+  };
+
+  const compartirListas = async () => {
+    if (!listas) return;
+    const estado = await compartir(listas.archivos, listas.texto);
+    if (estado !== 'pendiente') setListas(null);
+  };
 
   return (
     <div className="space-y-3">
@@ -115,9 +173,51 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
 
       {!anulado && (
         <div className="px-3 space-y-2">
-          <Boton anchoCompleto variante="secundario" onClick={() => entrada.current?.click()}>
-            Agregar fotos
-          </Boton>
+          {paraCompartir && (
+            <div className="space-y-2">
+              {listas ? (
+                <Boton anchoCompleto onClick={() => void compartirListas()}>
+                  Compartir ahora (fotos listas)
+                </Boton>
+              ) : (
+                <>
+                  <Boton
+                    anchoCompleto
+                    guardando={preparando === 'todas'}
+                    textoGuardando="Preparando…"
+                    onClick={() => void accion(fotos.map((_, i) => i), 'todas')}
+                  >
+                    Compartir todas
+                  </Boton>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Boton
+                      anchoCompleto
+                      variante="secundario"
+                      guardando={preparando === 'esta'}
+                      textoGuardando="Preparando…"
+                      onClick={() => void accion([indiceSeleccionada], 'esta')}
+                    >
+                      Compartir esta foto
+                    </Boton>
+                    <Boton
+                      anchoCompleto
+                      variante="secundario"
+                      guardando={preparando === 'descargar'}
+                      textoGuardando="Preparando…"
+                      onClick={() => void accion([indiceSeleccionada], 'descargar')}
+                    >
+                      Descargar
+                    </Boton>
+                  </div>
+                </>
+              )}
+              {avisoCompartir && (
+                <p role="alert" className="text-sm text-red-700">
+                  {avisoCompartir}
+                </p>
+              )}
+            </div>
+          )}
           <input
             ref={entrada}
             type="file"
@@ -130,6 +230,10 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
               if (archivos.length > 0) onAgregar(archivos);
             }}
           />
+
+          <Boton anchoCompleto variante="secundario" onClick={() => entrada.current?.click()}>
+            Agregar fotos
+          </Boton>
 
           {!seleccionada.esPrincipal && (
             <Boton anchoCompleto variante="secundario" onClick={() => onUsarComoPrincipal(seleccionada.id)}>

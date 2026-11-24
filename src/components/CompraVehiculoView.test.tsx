@@ -271,7 +271,7 @@ describe('CompraVehiculoView', () => {
     fireEvent.click(screen.getByRole('button', { name: /ver vehículos/i }));
     expect(onVerVehiculos).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /volver al inicio/i }));
+    fireEvent.click(screen.getByRole('button', { name: /volver a caja/i }));
     expect(onVolver).toHaveBeenCalledTimes(1);
   });
 

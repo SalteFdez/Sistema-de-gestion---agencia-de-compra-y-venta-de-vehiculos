@@ -9,6 +9,7 @@ export interface MasViewProps {
   onPendientes: () => void;
   onGanancia: () => void;
   onCuentas?: () => void;
+  onCargarStock?: () => void;
   onChangePin: () => void;
   onBloquear: () => void;
   onDesvincular: () => void;
@@ -21,6 +22,7 @@ export const MasView: React.FC<MasViewProps> = ({
   onPendientes,
   onGanancia,
   onCuentas,
+  onCargarStock,
   onChangePin,
   onBloquear,
   onDesvincular,
@@ -34,6 +36,7 @@ export const MasView: React.FC<MasViewProps> = ({
     { label: 'Pendientes de asignar', onClick: onPendientes },
     { label: 'Ganancia por mes', onClick: onGanancia },
     ...(onCuentas ? [{ label: 'Cuentas', onClick: onCuentas }] : []),
+    ...(onCargarStock ? [{ label: 'Cargar stock existente', onClick: onCargarStock }] : []),
     { label: 'Cambiar PIN', onClick: onChangePin },
     { label: 'Bloquear', onClick: onBloquear },
     {

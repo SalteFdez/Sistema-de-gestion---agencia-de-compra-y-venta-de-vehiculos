@@ -175,6 +175,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
             onAgregar={(archivos) => onAgregarFotos?.(archivos)}
             onUsarComoPrincipal={(id) => onUsarComoPrincipal?.(id)}
             onQuitar={(id) => onQuitarFoto?.(id)}
+            paraCompartir={{ codigo: detalle.codigo, texto: `${detalle.marca} ${detalle.modelo} ${detalle.anio}` }}
           />
         ) : fotoUrl ? (
           <img src={fotoUrl} alt={`${detalle.marca} ${detalle.modelo}`} className="w-full h-64 object-cover" />
@@ -264,7 +265,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
         {detalle.anulado ? null : detalle.estado === 'vendido' ? (
           onAnularVenta && (
             <div className="mt-2">
-              <Boton anchoCompleto variante="peligro" onClick={() => {
+              <Boton anchoCompleto variante="peligroBorde" onClick={() => {
                 setMotivo('');
                 setAAnular('venta');
               }}>
@@ -275,7 +276,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
         ) : (
           onAnularVehiculo && detalle.origen !== 'permuta' && (
             <div className="mt-2">
-              <Boton anchoCompleto variante="peligro" onClick={() => {
+              <Boton anchoCompleto variante="peligroBorde" onClick={() => {
                 setMotivo('');
                 setAAnular('vehiculo');
               }}>

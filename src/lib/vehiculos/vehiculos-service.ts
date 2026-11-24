@@ -1747,6 +1747,56 @@ export class VehiculosService {
     };
   }
 
+  /**
+   * Fotos vigentes de un auto para compartir: URLs firmadas en un solo pedido, la principal primero.
+   * Usa la misma consulta de fotos que el detalle.
+   */
+  async fotosParaCompartir(id: string): Promise<{
+    success: boolean;
+    error?: string;
+    codigo?: string;
+    marca?: string;
+    modelo?: string;
+    urls: string[];
+  }> {
+    const { data: vehiculo, error: errorVehiculo } = await this.db
+      .from('vehiculos')
+      .select('id, codigo, marca, modelo, anio, foto_url')
+      .eq('id', id)
+      .maybeSingle();
+    if (errorVehiculo) {
+      return { success: false, error: errorVehiculo.message, urls: [] };
+    }
+    if (!vehiculo) {
+      return { success: false, error: 'No se encontró el vehículo', urls: [] };
+    }
+    const v = vehiculo as { codigo: string; marca: string; modelo: string; foto_url: string | null };
+
+    const { data: filasFotos, error: errorFotos } = await this.db
+      .from('vehiculo_fotos')
+      .select('id, ruta, orden, quitada')
+      .eq('vehiculo_id', id)
+      .eq('quitada', false);
+    if (errorFotos) {
+      return { success: false, error: errorFotos.message, urls: [] };
+    }
+    const vigentes = ((Array.isArray(filasFotos) ? filasFotos : []) as Array<{ ruta: string; orden: number }>)
+      .sort((a, b) => Number(a.orden) - Number(b.orden))
+      // La principal va primero; el resto sigue su orden
+      .sort((a, b) => Number(b.ruta === v.foto_url) - Number(a.ruta === v.foto_url));
+
+    let urls: string[] = [];
+    if (vigentes.length > 0 && this.storage) {
+      const { data: firmadas } = await this.storage
+        .from('vehiculos')
+        .createSignedUrls(vigentes.map((f) => f.ruta), 3600);
+      const urlPorRuta = new Map((firmadas ?? []).filter((f) => f.signedUrl).map((f) => [f.path, f.signedUrl]));
+      urls = vigentes.map((f) => urlPorRuta.get(f.ruta)).filter((u): u is string => Boolean(u));
+    }
+
+    return { success: true, codigo: v.codigo, marca: v.marca, modelo: v.modelo, urls };
+  }
+
   async obtenerInventario(): Promise<{ total: number; cantidad: number }> {
     const { data, error } = await this.db
       .from('v_inventario')

@@ -25,6 +25,7 @@ import { MovimientoSocioView } from './MovimientoSocioView';
 import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion, PendientesResult, PendienteAsignar, CuotaPorCobrar, MesGanancia, DetalleMesGanancia } from '../lib/vehiculos/vehiculos-service';
 import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
+import { CargarStockView } from './CargarStockView';
 import { Cargando } from './ui/Cargando';
 import { ErrorReintentar } from './ui/ErrorReintentar';
 import { Dialogo } from './ui/Dialogo';
@@ -60,7 +61,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [mostrarConfirmarOlvidePin, setMostrarConfirmarOlvidePin] = useState<boolean>(false);
   const { vista: currentView, ir, volver, reemplazar, irAPestana } = useNavegacion({
     isUnlocked,
-    vistaInicial: 'home',
+    // Al abrir la app se entra a Vehículos: es la pantalla de todos los días
+    vistaInicial: 'vehiculos',
   });
   const setCurrentView = (v: Vista) => ir(v);
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
@@ -349,11 +351,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   useEffect(() => {
     if (isUnlocked) {
       loadCuentasData();
+      // La app puede abrir directo en Vehículos: su listado se carga al desbloquear
+      void loadVehiculosData();
       void loadPendientes();
       void loadPorCobrar();
       void loadCuotas();
     }
-  }, [isUnlocked, loadCuentasData, loadPendientes, loadPorCobrar, loadCuotas]);
+  }, [isUnlocked, loadCuentasData, loadVehiculosData, loadPendientes, loadPorCobrar, loadCuotas]);
 
   const handleSeleccionarPestana = useCallback((p: Pestana) => {
     if (p === 'vehiculos') {
@@ -745,7 +749,6 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             }
             onVerVehiculo={(vehiculoId) => void abrirDetalle(vehiculoId)}
             vistaPreviaGasto={vehiculosService ? (gastoId) => vehiculosService.vistaPreviaAnularGasto(gastoId) : undefined}
-            onVolver={() => irAPestana('home')}
           />
           <BarraNavegacion pestanaActiva="movimientos" onSeleccionar={handleSeleccionarPestana} />
         </main>
@@ -998,13 +1001,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             vehiculos={vehiculos}
             errorCarga={vehiculosError}
             cargando={cargandoVehiculos}
+            onPedirFotos={vehiculosService ? (id) => vehiculosService.fotosParaCompartir(id) : undefined}
             filtro={filtroVehiculos}
             busqueda={busquedaVehiculos}
             onCambiarBusqueda={setBusquedaVehiculos}
             onCambiarFiltro={setFiltroVehiculos}
             onAbrirDetalle={(id) => void abrirDetalle(id)}
             onReintentar={loadVehiculosData}
-            onVolver={() => irAPestana('home')}
             onAgregarFoto={
               vehiculosService
                 ? async (id, foto) => {
@@ -1019,17 +1022,30 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
                 : undefined
             }
             comprimirFoto={comprimirFoto}
-            onCargarStock={
-              vehiculosService
-                ? async (params) => {
-                    const res = await vehiculosService.cargarStock(params);
-                    if (res.success) await loadVehiculosData();
-                    return res;
-                  }
-                : undefined
-            }
           />
           <BarraNavegacion pestanaActiva="vehiculos" onSeleccionar={handleSeleccionarPestana} />
+        </main>
+      );
+    }
+
+    if (currentView === 'cargar_stock') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4 pb-20">
+          <CargarStockView
+            onVolver={volver}
+            onGuardar={
+              vehiculosService
+                ? (params) => vehiculosService.cargarStock(params)
+                : undefined
+            }
+            onVolverAlListado={() => {
+              // Al terminar, el listado de Vehículos se ve actualizado
+              void loadVehiculosData();
+              reemplazar('vehiculos');
+            }}
+            comprimirFoto={comprimirFoto}
+          />
+          <BarraNavegacion pestanaActiva="mas" onSeleccionar={handleSeleccionarPestana} />
         </main>
       );
     }
@@ -1104,6 +1120,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
                   }
                 : undefined
             }
+            onCargarStock={() => ir('cargar_stock')}
             onChangePin={() => ir('change_pin')}
             onBloquear={handleManualLock}
             onDesvincular={handleForgotPin}

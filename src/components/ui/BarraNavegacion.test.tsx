@@ -1,22 +1,29 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
 import { BarraNavegacion } from './BarraNavegacion';
 
 describe('BarraNavegacion', () => {
-  it('muestra las 4 pestañas: Inicio, Vehículos, Movimientos y Más', () => {
+  it('muestra las 4 pestañas en orden: Vehículos, Caja, Movimientos y Más', () => {
     render(<BarraNavegacion pestanaActiva="home" onSeleccionar={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: /inicio/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /vehículos/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /movimientos/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /más/i })).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: /navegación principal/i });
+    const etiquetas = within(nav).getAllByRole('button').map((b) => b.textContent);
+    expect(etiquetas).toEqual(['Vehículos', 'Caja', 'Movimientos', 'Más']);
+  });
+
+  it('la pestaña Caja lleva a la vista de inicio (home)', () => {
+    const onSeleccionar = vi.fn();
+    render(<BarraNavegacion pestanaActiva="vehiculos" onSeleccionar={onSeleccionar} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /caja/i }));
+    expect(onSeleccionar).toHaveBeenCalledWith('home');
   });
 
   it('destaca la pestaña activa con aria-current="page" y color de marca', () => {
     const { rerender } = render(<BarraNavegacion pestanaActiva="home" onSeleccionar={vi.fn()} />);
 
-    const inicioBtn = screen.getByRole('button', { name: /inicio/i });
+    const inicioBtn = screen.getByRole('button', { name: /caja/i });
     expect(inicioBtn).toHaveAttribute('aria-current', 'page');
     expect(inicioBtn).toHaveClass('text-marca');
 

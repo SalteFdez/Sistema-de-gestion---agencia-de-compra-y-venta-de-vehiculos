@@ -246,7 +246,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
             onClick={onVolver}
             className="w-full mt-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium text-sm rounded-xl"
           >
-            Volver al inicio
+            Volver a Caja
           </button>
         </section>
       </div>

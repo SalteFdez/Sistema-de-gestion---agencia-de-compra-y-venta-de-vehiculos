@@ -129,7 +129,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               Ver vehículos
             </Boton>
             <Boton anchoCompleto variante="secundario" onClick={onVolver}>
-              Volver al inicio
+              Volver a Caja
             </Boton>
           </div>
         </section>

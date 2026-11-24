@@ -26,7 +26,8 @@ export interface MovimientosViewProps {
   vistaPreviaGasto?: (gastoId: string) => Promise<Array<{ codigo: string; monto: number }>>;
   /** Lleva al detalle del vehículo de una compra o de un cobro de venta */
   onVerVehiculo?: (vehiculoId: string) => void;
-  onVolver: () => void;
+  /** Solo si Movimientos se muestra como pantalla secundaria; como pestaña raíz no hay Volver */
+  onVolver?: () => void;
 }
 
 const ETIQUETA_TIPO: Record<string, string> = {
