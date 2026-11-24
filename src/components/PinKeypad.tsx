@@ -82,18 +82,8 @@ export const PinKeypad: React.FC<PinKeypadProps> = ({
           </button>
         ))}
 
-        {/* Fila inferior: vacío / olvidé, 0, borrar */}
-        <div className="flex items-center justify-center">
-          {onForgotPin ? (
-            <button
-              type="button"
-              onClick={onForgotPin}
-              className="text-xs text-blue-600 hover:underline text-center font-medium"
-            >
-              Me olvidé
-            </button>
-          ) : null}
-        </div>
+        {/* Fila inferior: espacio vacío, 0, borrar */}
+        <div className="flex items-center justify-center" aria-hidden="true" />
 
         <button
           type="button"

@@ -128,6 +128,41 @@ describe('AuthFlow UI Integration', () => {
     expect(screen.getByRole('button', { name: /me olvidé el pin/i })).toBeInTheDocument();
   });
 
+  it('al tocar "Me olvidé el PIN" en la pantalla de PIN abre diálogo de confirmación y solo desvincula si confirma', async () => {
+    mockAuthService = {
+      isDeviceLinked: vi.fn().mockReturnValue(true),
+      getLinkedUser: vi.fn().mockReturnValue({
+        id: 'u1',
+        email: 'agustin@machoman.local',
+        nombre: 'Agustín Fernandez',
+      }),
+      unlinkDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    render(
+      <AuthFlow
+        authService={mockAuthService as DeviceAuthService}
+        lockout={mockLockout as PinLockout}
+        inactivity={mockInactivity as SessionInactivityTracker}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /me olvidé el pin/i }));
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/vas a tener que volver a vincular/i)).toBeInTheDocument();
+
+    // Cancelar cierra el diálogo y no desvincula
+    fireEvent.click(screen.getByRole('button', { name: 'Volver' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockAuthService.unlinkDevice).not.toHaveBeenCalled();
+
+    // Abrir de nuevo y confirmar
+    fireEvent.click(screen.getByRole('button', { name: /me olvidé el pin/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Desvincular' }));
+    expect(mockAuthService.unlinkDevice).toHaveBeenCalledTimes(1);
+  });
+
   it('desbloquea y muestra "Hola, Agustín Fernandez" tras ingresar el PIN correcto', async () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),
@@ -192,7 +227,7 @@ describe('AuthFlow UI Integration', () => {
     expect(screen.queryByText(/hola, agustín fernandez/i)).not.toBeInTheDocument();
   });
 
-  it('permite acceder a "Cambiar PIN" desde la pantalla principal y volver', async () => {
+  it('permite acceder a "Cambiar PIN" desde Más y volver', async () => {
     mockAuthService = {
       isDeviceLinked: vi.fn().mockReturnValue(true),
       getLinkedUser: vi.fn().mockReturnValue({
@@ -212,8 +247,8 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
-    // En la pantalla principal vemos "Hola, Agustín Fernandez" y el botón "Cambiar PIN"
     expect(screen.getByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /más/i }));
     const changePinBtn = screen.getByRole('button', { name: /cambiar pin/i });
     expect(changePinBtn).toBeInTheDocument();
 
@@ -221,10 +256,10 @@ describe('AuthFlow UI Integration', () => {
     fireEvent.click(changePinBtn);
     expect(screen.getByText(/ingresá tu pin actual/i)).toBeInTheDocument();
 
-    // Si cancela, vuelve a la pantalla principal
+    // Si cancela, vuelve a Más
     const cancelBtn = screen.getByRole('button', { name: /cancelar/i });
     fireEvent.click(cancelBtn);
-    expect(screen.getByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cambiar pin/i })).toBeInTheDocument();
   });
 
   it('permite navegar a Balances desde el botón grande de la pantalla principal y volver', async () => {
@@ -322,6 +357,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /más/i }));
     fireEvent.click(screen.getByRole('button', { name: /mover plata/i }));
 
     expect(await screen.findByRole('heading', { name: 'Mover plata' })).toBeInTheDocument();
@@ -331,7 +367,7 @@ describe('AuthFlow UI Integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /volver/i }));
 
-    expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /mover plata/i })).toBeInTheDocument();
   });
 
   describe('Mover plata conectado al servicio', () => {
@@ -369,6 +405,7 @@ describe('AuthFlow UI Integration', () => {
         />
       );
 
+      fireEvent.click(screen.getByRole('button', { name: /más/i }));
       fireEvent.click(screen.getByRole('button', { name: /mover plata/i }));
       fireEvent.click(screen.getByRole('button', { name: /pasar entre cuentas/i }));
       const desde = await screen.findByRole('group', { name: 'Desde' });
@@ -407,6 +444,7 @@ describe('AuthFlow UI Integration', () => {
         />
       );
 
+      fireEvent.click(screen.getByRole('button', { name: /más/i }));
       fireEvent.click(screen.getByRole('button', { name: /mover plata/i }));
       fireEvent.click(screen.getByRole('button', { name: /aporte de socio/i }));
       const socios = await screen.findByRole('group', { name: 'Socio' });
@@ -1783,6 +1821,7 @@ describe('AuthFlow UI Integration', () => {
       />
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /más/i }));
     const btnCuentas = screen.getByRole('button', { name: /cuentas/i });
     expect(btnCuentas).toBeInTheDocument();
 
@@ -1793,6 +1832,6 @@ describe('AuthFlow UI Integration', () => {
     const btnVolver = screen.getByRole('button', { name: /volver/i });
     fireEvent.click(btnVolver);
 
-    expect(await screen.findByText(/hola, agustín fernandez/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /cuentas/i })).toBeInTheDocument();
   });
 });

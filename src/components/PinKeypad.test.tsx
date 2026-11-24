@@ -64,4 +64,11 @@ describe('PinKeypad', () => {
     const circlesContainer = container.querySelector('[data-testid="pin-circles"]');
     expect(circlesContainer?.className).toContain('shake');
   });
+
+  it('muestra un solo botón "Me olvidé el PIN" cuando onForgotPin está definido', () => {
+    render(<PinKeypad onComplete={() => {}} onForgotPin={() => {}} />);
+    const botonesOlvide = screen.getAllByRole('button', { name: /olvid/i });
+    expect(botonesOlvide).toHaveLength(1);
+    expect(botonesOlvide[0]).toHaveTextContent('Me olvidé el PIN');
+  });
 });

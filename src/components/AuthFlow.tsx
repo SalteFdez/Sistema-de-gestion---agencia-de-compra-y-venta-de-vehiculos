@@ -27,6 +27,12 @@ import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
 import { Cargando } from './ui/Cargando';
 import { ErrorReintentar } from './ui/ErrorReintentar';
+import { Dialogo } from './ui/Dialogo';
+import { Boton } from './ui/Boton';
+import { BarraNavegacion } from './ui/BarraNavegacion';
+import { MasView } from './MasView';
+import { InicioView } from './InicioView';
+import { useNavegacion, type Vista, type Pestana } from '../lib/navegacion/useNavegacion';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
 
 export interface AuthFlowProps {
@@ -51,9 +57,12 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => inactivity.isUnlocked());
   const [lockoutStatus, setLockoutStatus] = useState<LockoutStatus>(() => lockout.getStatus());
   const [pinError, setPinError] = useState<boolean>(false);
-  const [currentView, setCurrentView] = useState<
-    'home' | 'balances' | 'cuentas' | 'change_pin' | 'vehiculos' | 'comprar' | 'vehiculo_detalle' | 'vender' | 'gasto' | 'ingreso' | 'movimientos' | 'mover_plata' | 'pasar_plata' | 'aporte_socio' | 'retiro_socio' | 'pendientes' | 'asignar_gasto' | 'cuotas_por_cobrar' | 'cobrar_cuota' | 'ganancia_mensual' | 'ganancia_mes'
-  >('home');
+  const [mostrarConfirmarOlvidePin, setMostrarConfirmarOlvidePin] = useState<boolean>(false);
+  const { vista: currentView, ir, volver, reemplazar, irAPestana } = useNavegacion({
+    isUnlocked,
+    vistaInicial: 'home',
+  });
+  const setCurrentView = (v: Vista) => ir(v);
   const [detalleVehiculo, setDetalleVehiculo] = useState<DetalleVehiculo | null>(null);
   const [fotoDetalle, setFotoDetalle] = useState<string | null>(null);
 
@@ -114,7 +123,12 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     setVistaPreviaVenta(undefined);
     setCobrosCuotasVenta(undefined);
     setFotoDetalle(item?.fotoUrl ?? null);
-    setCurrentView('vehiculo_detalle');
+    // Recargar el mismo detalle (tras anular o tocar fotos) no agrega una entrada al historial
+    if (currentView === 'vehiculo_detalle' && idDetalle === id) {
+      reemplazar('vehiculo_detalle');
+    } else {
+      setCurrentView('vehiculo_detalle');
+    }
     try {
       const res = await vehiculosService.obtenerDetalle(id);
       if (res.success && res.detalle) {
@@ -341,6 +355,19 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     }
   }, [isUnlocked, loadCuentasData, loadPendientes, loadPorCobrar, loadCuotas]);
 
+  const handleSeleccionarPestana = useCallback((p: Pestana) => {
+    if (p === 'vehiculos') {
+      void loadVehiculosData();
+    } else if (p === 'movimientos') {
+      void loadMovimientos(0);
+    } else if (p === 'home') {
+      void loadCuentasData();
+      void loadCuotas();
+      void loadPendientes();
+    }
+    irAPestana(p);
+  }, [irAPestana, loadVehiculosData, loadMovimientos, loadCuentasData, loadCuotas, loadPendientes]);
+
   // Manejador de inactividad: escuchar interacción y visibilidad
   const handleUserActivity = useCallback(() => {
     if (isUnlocked) {
@@ -481,8 +508,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             <ChangePinFlow
               authService={authService}
               lockout={lockout}
-              onDone={() => setCurrentView('home')}
-              onCancel={() => setCurrentView('home')}
+              onDone={volver}
+              onCancel={volver}
             />
           </div>
         </main>
@@ -501,7 +528,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               void loadDetalleMes(mes);
               setCurrentView('ganancia_mes');
             }}
-            onVolver={() => setCurrentView('balances')}
+            onVolver={volver}
           />
         </main>
       );
@@ -519,7 +546,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
                 void loadPendientes();
                 setCurrentView('pendientes');
               }}
-              onVolver={() => setCurrentView('ganancia_mensual')}
+              onVolver={volver}
             />
           ) : (
             errorDetalleMes ? (
@@ -544,7 +571,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               setCuotaCobrar(cuota);
               setCurrentView('cobrar_cuota');
             }}
-            onVolver={() => setCurrentView('home')}
+            onVolver={volver}
           />
         </main>
       );
@@ -566,7 +593,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             }}
             onVolver={() => {
               void loadCuotas();
-              setCurrentView('cuotas_por_cobrar');
+              volver();
             }}
           />
         </main>
@@ -585,7 +612,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               setGastoAsignar(gasto);
               setCurrentView('asignar_gasto');
             }}
-            onVolver={() => setCurrentView('home')}
+            onVolver={volver}
           />
         </main>
       );
@@ -607,7 +634,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             }}
             onVolver={() => {
               void loadPendientes();
-              setCurrentView('pendientes');
+              volver();
             }}
           />
         </main>
@@ -627,7 +654,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               void loadSocios();
               setCurrentView('retiro_socio');
             }}
-            onVolver={() => setCurrentView('home')}
+            onVolver={volver}
           />
         </main>
       );
@@ -646,7 +673,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               }
               return res;
             }}
-            onVolver={() => setCurrentView('mover_plata')}
+            onVolver={volver}
           />
         </main>
       );
@@ -672,7 +699,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               }
               return res;
             }}
-            onVolver={() => setCurrentView('mover_plata')}
+            onVolver={volver}
           />
         </main>
       );
@@ -680,7 +707,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
 
     if (currentView === 'movimientos') {
       return (
-        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4 pb-20">
           <MovimientosView
             movimientos={movimientos}
             hayMas={hayMasMovimientos}
@@ -718,8 +745,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             }
             onVerVehiculo={(vehiculoId) => void abrirDetalle(vehiculoId)}
             vistaPreviaGasto={vehiculosService ? (gastoId) => vehiculosService.vistaPreviaAnularGasto(gastoId) : undefined}
-            onVolver={() => setCurrentView('home')}
+            onVolver={() => irAPestana('home')}
           />
+          <BarraNavegacion pestanaActiva="movimientos" onSeleccionar={handleSeleccionarPestana} />
         </main>
       );
     }
@@ -731,13 +759,14 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             modo="ingreso"
             categorias={categoriasIngreso}
             cuentas={cuentas}
-            onVolver={() => setCurrentView('home')}
+            onVolver={volver}
             onIrACuentas={() => setCurrentView('cuentas')}
             onRegistrarIngreso={
               vehiculosService
                 ? async (params) => {
                     const res = await vehiculosService.registrarIngreso(params);
                     if (res.success) {
+                      reemplazar('ingreso');
                       await Promise.all([loadCuentasData(), loadVehiculosData()]);
                     }
                     return res;
@@ -764,19 +793,21 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
                 ? async (params) => {
                     const res = await vehiculosService.registrarGastoRepartido(params);
                     if (res.success) {
+                      reemplazar('gasto');
                       await Promise.all([loadCuentasData(), loadVehiculosData()]);
                     }
                     return res;
                   }
                 : undefined
             }
-            onVolver={() => setCurrentView('home')}
+            onVolver={volver}
             onIrACuentas={() => setCurrentView('cuentas')}
             onRegistrar={
               vehiculosService
                 ? async (params) => {
                     const res = await vehiculosService.registrarGasto(params);
                     if (res.success) {
+                      reemplazar('gasto');
                       await Promise.all([loadCuentasData(), loadVehiculosData()]);
                     }
                     return res;
@@ -794,12 +825,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           <VenderVehiculoView
             vehiculos={vehiculos}
             cuentas={cuentas}
-            onVolver={() => setCurrentView('home')}
+            onVolver={volver}
             onRegistrar={
               vehiculosService
                 ? async (params) => {
                     const res = await vehiculosService.registrarVentaConPermutas(params);
                     if (res.success) {
+                      reemplazar('vender');
                       await Promise.all([loadCuentasData(), loadVehiculosData()]);
                     }
                     return res;
@@ -816,17 +848,19 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <CompraVehiculoView
             cuentas={cuentas}
-            onVolver={() => setCurrentView('home')}
+            onVolver={volver}
             onIrACuentas={() => setCurrentView('cuentas')}
             onVerVehiculos={() => {
               void loadVehiculosData();
-              setCurrentView('vehiculos');
+              // La compra ya se registró: atrás desde Vehículos no vuelve al formulario enviado
+              reemplazar('vehiculos');
             }}
             onRegistrar={
               vehiculosService
                 ? async (params) => {
                     const res = await vehiculosService.registrarCompra(params);
                     if (res.success) {
+                      reemplazar('comprar');
                       await Promise.all([loadCuentasData(), loadVehiculosData()]);
                     }
                     return res;
@@ -844,7 +878,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           <VehiculoDetalleView
             detalle={detalleVehiculo}
             fotoUrl={fotoDetalle}
-            onVolver={() => setCurrentView('vehiculos')}
+            onVolver={volver}
             onAgregarGasto={() => {
               setGastoPreseleccionado(detalleVehiculo.id);
               loadCuentasData();
@@ -937,7 +971,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               <h1 className="text-xl font-bold text-gray-900">Detalle del vehículo</h1>
               <button
                 type="button"
-                onClick={() => setCurrentView('vehiculos')}
+                onClick={volver}
                 className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
               >
                 Volver
@@ -959,7 +993,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
 
     if (currentView === 'vehiculos') {
       return (
-        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4 pb-20">
           <VehiculosView
             vehiculos={vehiculos}
             errorCarga={vehiculosError}
@@ -970,7 +1004,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             onCambiarFiltro={setFiltroVehiculos}
             onAbrirDetalle={(id) => void abrirDetalle(id)}
             onReintentar={loadVehiculosData}
-            onVolver={() => setCurrentView('home')}
+            onVolver={() => irAPestana('home')}
             onAgregarFoto={
               vehiculosService
                 ? async (id, foto) => {
@@ -995,6 +1029,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
                 : undefined
             }
           />
+          <BarraNavegacion pestanaActiva="vehiculos" onSeleccionar={handleSeleccionarPestana} />
         </main>
       );
     }
@@ -1017,7 +1052,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             cuentas={cuentas}
             inventario={inventario}
             errorInventario={inventarioError}
-            onVolver={() => setCurrentView('home')}
+            onVolver={volver}
             onIrACuentas={() => setCurrentView('cuentas')}
           />
         </main>
@@ -1032,7 +1067,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
             cuentasService={cuentasService}
             onVolver={() => {
               loadCuentasData();
-              setCurrentView('home');
+              volver();
             }}
             onCuentaCreada={loadCuentasData}
           />
@@ -1040,195 +1075,88 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       );
     }
 
+    if (currentView === 'mas') {
+      return (
+        <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4 pb-20">
+          <MasView
+            onBalances={() => {
+              loadCuentasData();
+              ir('balances');
+            }}
+            onMoverPlata={() => ir('mover_plata')}
+            onCuotas={() => {
+              void loadCuotas();
+              ir('cuotas_por_cobrar');
+            }}
+            onPendientes={() => {
+              void loadPendientes();
+              ir('pendientes');
+            }}
+            onGanancia={() => {
+              void loadGananciaMensual();
+              ir('ganancia_mensual');
+            }}
+            onCuentas={
+              cuentasService
+                ? () => {
+                    loadCuentasData();
+                    ir('cuentas');
+                  }
+                : undefined
+            }
+            onChangePin={() => ir('change_pin')}
+            onBloquear={handleManualLock}
+            onDesvincular={handleForgotPin}
+          />
+          <BarraNavegacion pestanaActiva="mas" onSeleccionar={handleSeleccionarPestana} />
+        </main>
+      );
+    }
+
     return (
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-between p-6">
-        <header className="w-full max-w-md flex justify-between items-center py-4">
-          <span className="font-bold text-gray-800">Machoman Automotores</span>
-          <button
-            type="button"
-            onClick={handleManualLock}
-            className="text-xs text-gray-500 hover:text-gray-800 border border-gray-300 rounded px-2 py-1"
-          >
-            Bloquear
-          </button>
-        </header>
-
-        <section className="text-center my-auto w-full max-w-sm">
-          <h1 className="text-3xl font-extrabold text-gray-900 mb-2">
-            Hola, {linkedUser.nombre}
-          </h1>
-          <p className="text-gray-600 mb-6">Dispositivo vinculado correctamente.</p>
-
-          {/* Botón grande Balances */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                loadCuentasData();
-                setCurrentView('balances');
-              }}
-              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Balances</span>
-            </button>
-          </div>
-
-          {/* Botón grande Vehículos */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                loadVehiculosData();
-                setCurrentView('vehiculos');
-              }}
-              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Vehículos</span>
-            </button>
-          </div>
-
-          {/* Botón grande Comprar vehículo */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                loadCuentasData();
-                setCurrentView('comprar');
-              }}
-              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Comprar vehículo</span>
-            </button>
-          </div>
-
-          {/* Botón grande Vender vehículo */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                loadVehiculosData();
-                setCurrentView('vender');
-              }}
-              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Vender vehículo</span>
-            </button>
-          </div>
-
-          {/* Botón grande Registrar gasto */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                setGastoPreseleccionado(null);
-                loadCuentasData();
-                void loadCategoriasGasto();
-                loadVehiculosData();
-                setCurrentView('gasto');
-              }}
-              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Registrar gasto</span>
-            </button>
-          </div>
-
-          {/* Botón grande Registrar ingreso */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                loadCuentasData();
-                void loadCategoriasIngreso();
-                setCurrentView('ingreso');
-              }}
-              className="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Registrar ingreso</span>
-            </button>
-          </div>
-
-          {/* Botón Movimientos (historial) */}
-          <div className="flex flex-col gap-3 mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                void loadMovimientos(0);
-                setCurrentView('movimientos');
-              }}
-              className="w-full py-4 px-6 bg-gray-800 hover:bg-gray-900 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Movimientos</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentView('mover_plata')}
-              className="w-full py-4 px-6 bg-gray-800 hover:bg-gray-900 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-            >
-              <span>Mover plata</span>
-            </button>
-            {cuotas.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  void loadCuotas();
-                  setCurrentView('cuotas_por_cobrar');
-                }}
-                className="w-full py-4 px-6 bg-gray-800 hover:bg-gray-900 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-              >
-                <span>
-                  {`Cuotas por cobrar${contarVencidas(cuotas) > 0 ? ` · ${contarVencidas(cuotas)} vencida${contarVencidas(cuotas) === 1 ? '' : 's'}` : ''}`}
-                </span>
-              </button>
-            )}
-            {pendientes.total > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  void loadPendientes();
-                  setCurrentView('pendientes');
-                }}
-                className="w-full py-4 px-6 bg-amber-600 hover:bg-amber-700 text-white font-bold text-lg rounded-2xl shadow-md transition-colors flex items-center justify-center gap-2"
-              >
-                <span>Pendientes de asignar · {formatMoney(pendientes.total)} sin asignar</span>
-              </button>
-            )}
-          </div>
-
-          {/* Configuración provisoria */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              Configuración
-            </h2>
-            <div className="flex flex-col gap-2">
-              {cuentasService && (
-                <button
-                  type="button"
-                  onClick={() => setCurrentView('cuentas')}
-                  className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg text-sm transition-colors text-center"
-                >
-                  Cuentas
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setCurrentView('change_pin')}
-                className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium rounded-lg text-sm transition-colors text-center"
-              >
-                Cambiar PIN
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <footer className="w-full max-w-md text-center py-4">
-          <button
-            type="button"
-            onClick={handleForgotPin}
-            className="text-xs text-red-500 hover:underline"
-          >
-            Desvincular dispositivo
-          </button>
-        </footer>
+      <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4 pb-20">
+        <InicioView
+          nombreSocio={linkedUser.nombre}
+          totalDisponible={totalDisponible}
+          cargandoPlata={cargandoCuentas}
+          errorPlata={errorCuentas}
+          onReintentarPlata={loadCuentasData}
+          cuotasVencidas={cuotas.length > 0 ? contarVencidas(cuotas) : 0}
+          pendientesTotal={pendientes.total}
+          onIrABalances={() => {
+            loadCuentasData();
+            ir('balances');
+          }}
+          onIrACuotas={() => {
+            void loadCuotas();
+            ir('cuotas_por_cobrar');
+          }}
+          onIrAPendientes={() => {
+            void loadPendientes();
+            ir('pendientes');
+          }}
+          onComprar={() => {
+            loadCuentasData();
+            ir('comprar');
+          }}
+          onVender={() => {
+            loadVehiculosData();
+            ir('vender');
+          }}
+          onGasto={() => {
+            setGastoPreseleccionado(null);
+            loadCuentasData();
+            void loadCategoriasGasto();
+            loadVehiculosData();
+            ir('gasto');
+          }}
+          onIngreso={() => {
+            loadCuentasData();
+            void loadCategoriasIngreso();
+            ir('ingreso');
+          }}
+        />
+        <BarraNavegacion pestanaActiva="home" onSeleccionar={handleSeleccionarPestana} />
       </main>
     );
   }
@@ -1249,8 +1177,38 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           isLocked={lockoutStatus.isLocked}
           remainingSeconds={lockoutStatus.remainingSeconds}
           error={pinError}
-          onForgotPin={handleForgotPin}
+          onForgotPin={() => setMostrarConfirmarOlvidePin(true)}
         />
+
+        {mostrarConfirmarOlvidePin && (
+          <Dialogo
+            titulo="¿Desvincular dispositivo?"
+            onCerrar={() => setMostrarConfirmarOlvidePin(false)}
+          >
+            <p className="text-sm text-gray-600">
+              Vas a tener que volver a vincular el dispositivo con el email y la contraseña.
+            </p>
+            <div className="flex flex-col gap-2 pt-2">
+              <Boton
+                variante="peligro"
+                anchoCompleto
+                onClick={async () => {
+                  setMostrarConfirmarOlvidePin(false);
+                  await handleForgotPin();
+                }}
+              >
+                Desvincular
+              </Boton>
+              <Boton
+                variante="secundario"
+                anchoCompleto
+                onClick={() => setMostrarConfirmarOlvidePin(false)}
+              >
+                Volver
+              </Boton>
+            </div>
+          </Dialogo>
+        )}
       </main>
     );
   }
