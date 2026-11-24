@@ -47,7 +47,7 @@ describe('PasarPlataView', () => {
     fireEvent.click(screen.getByRole('button', { name: /pasar plata/i }));
 
     expect(onRegistrar).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('La cuenta Caja efectivo va a quedar en $ −1.000.000');
+    expect(screen.getByRole('dialog')).toHaveTextContent('La cuenta Caja efectivo va a quedar en $ −1.000.000');
 
     fireEvent.click(screen.getByRole('button', { name: /confirmar igual/i }));
     expect(onRegistrar).toHaveBeenCalledWith(expect.objectContaining({ origenId: 'c1', destinoId: 'c2', monto: 4000000 }));
@@ -66,7 +66,7 @@ describe('PasarPlataView', () => {
     fireEvent.click(screen.getByRole('button', { name: /pasar plata/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo confirmar/i);
-    expect(screen.getByLabelText(/monto/i)).toHaveValue('1000000');
+    expect(screen.getByLabelText(/monto/i)).toHaveValue('$ 1.000.000');
     expect(within(screen.getByRole('group', { name: 'Desde' })).getByRole('button', { name: /caja efectivo/i })).toHaveAttribute('aria-pressed', 'true');
   });
 

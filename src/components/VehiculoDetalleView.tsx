@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import type { DetalleVehiculo, VistaPreviaAnulacion } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
 import { GaleriaFotos } from './GaleriaFotos';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { Dialogo } from './ui/Dialogo';
+import { BadgeEstado } from './ui/BadgeEstado';
 
 export interface VehiculoDetalleViewProps {
   detalle: DetalleVehiculo;
@@ -27,20 +31,11 @@ export interface VehiculoDetalleViewProps {
   vistaPreviaVenta?: Array<{ id: string; codigo: string; gastosQueSeAnulan?: { cantidad: number; total: number } }>;
 }
 
-const ETIQUETA_ESTADO: Record<DetalleVehiculo['estado'], string> = {
-  en_stock: 'En stock',
-  reservado: 'Reservado',
-  vendido: 'Vendido',
-};
-
 const ETIQUETA_ORIGEN: Record<DetalleVehiculo['origen'], string> = {
   compra: 'Compra',
   permuta: 'Permuta',
   inventario_inicial: 'Stock existente',
 };
-
-// Pérdida con el signo menos típico: "$ −200.000"
-const formatoNegativo = (n: number): string => `$ −${formatMoney(Math.abs(n)).replace('$ ', '')}`;
 
 // Día y mes de un timestamp en hora de Buenos Aires: "14/11"
 const diaMesBA = (iso: string): string => {
@@ -154,16 +149,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
   };
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Detalle del vehículo</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Detalle del vehículo" onVolver={onVolver} />
 
       {detalle.anulado && (
         <p role="status" className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
@@ -201,9 +187,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
         <div className="p-4 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-lg font-bold text-blue-700">{detalle.codigo}</span>
-            <span className="text-xs font-medium text-green-700 bg-green-50 rounded px-2 py-0.5">
-              {ETIQUETA_ESTADO[detalle.estado]}
-            </span>
+            <BadgeEstado estado={detalle.anulado ? 'anulado' : detalle.estado} />
           </div>
           <h2 className="text-base font-semibold text-gray-900">
             {detalle.marca} {detalle.modelo}
@@ -279,40 +263,34 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
         )}
         {detalle.anulado ? null : detalle.estado === 'vendido' ? (
           onAnularVenta && (
-            <button
-              type="button"
-              onClick={() => {
+            <div className="mt-2">
+              <Boton anchoCompleto variante="peligro" onClick={() => {
                 setMotivo('');
                 setAAnular('venta');
-              }}
-              className="w-full mt-2 py-2 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
-            >
-              Anular venta
-            </button>
+              }}>
+                Anular venta
+              </Boton>
+            </div>
           )
         ) : (
           onAnularVehiculo && detalle.origen !== 'permuta' && (
-            <button
-              type="button"
-              onClick={() => {
+            <div className="mt-2">
+              <Boton anchoCompleto variante="peligro" onClick={() => {
                 setMotivo('');
                 setAAnular('vehiculo');
-              }}
-              className="w-full mt-2 py-2 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
-            >
-              {detalle.origen === 'inventario_inicial' ? 'Anular alta' : 'Anular compra'}
-            </button>
+              }}>
+                {detalle.origen === 'inventario_inicial' ? 'Anular alta' : 'Anular compra'}
+              </Boton>
+            </div>
           )
         )}
 
         {onAgregarGasto && !detalle.anulado && (
-          <button
-            type="button"
-            onClick={onAgregarGasto}
-            className="w-full mt-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 text-sm font-medium rounded-lg"
-          >
-            Agregar gasto
-          </button>
+          <div className="mt-4">
+            <Boton anchoCompleto variante="secundario" onClick={onAgregarGasto}>
+              Agregar gasto
+            </Boton>
+          </div>
         )}
 
         <div className="mt-4 pt-3 border-t border-gray-200">
@@ -388,7 +366,7 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
           )}
 
           {detalle.venta.ganancia < 0 ? (
-            <p className="text-lg font-bold text-red-600 mt-3">Pérdida {formatoNegativo(detalle.venta.ganancia)}</p>
+            <p className="text-lg font-bold text-red-600 mt-3">Pérdida {formatMoney(detalle.venta.ganancia)}</p>
           ) : (
             <p className="text-lg font-bold text-green-700 mt-3">Ganancia {formatMoney(detalle.venta.ganancia)}</p>
           )}
@@ -396,9 +374,9 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
       )}
 
       {aAnular && (
-        <div role="dialog" aria-modal="true" className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+        <Dialogo titulo="¿Seguro?" onCerrar={() => setAAnular(null)} guardando={guardando}>
           {textoAviso().map((l, i) => (
-            <p key={i} className="text-sm text-red-900">
+            <p key={i} className="text-sm text-gray-900">
               {l}
             </p>
           ))}
@@ -411,32 +389,27 @@ export const VehiculoDetalleView: React.FC<VehiculoDetalleViewProps> = ({
               type="text"
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base bg-white"
             />
           </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setAAnular(null)}
-              className="flex-1 py-2 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg"
-            >
-              Volver
-            </button>
-            <button
-              type="button"
-              disabled={motivo.trim() === '' || guardando}
-              onClick={() => void confirmarAnulacion()}
-              className="flex-1 py-2 bg-red-600 disabled:bg-gray-300 text-white text-sm rounded-lg"
-            >
-              {guardando ? 'Guardando…' : 'Sí, anular'}
-            </button>
-          </div>
+          <Boton anchoCompleto variante="secundario" onClick={() => setAAnular(null)}>
+            Volver
+          </Boton>
+          <Boton
+            anchoCompleto
+            variante="peligro"
+            disabled={motivo.trim() === ''}
+            guardando={guardando}
+            onClick={() => void confirmarAnulacion()}
+          >
+            Sí, anular
+          </Boton>
           {errorAnular && (
             <p role="alert" className="text-sm text-red-700">
               {errorAnular}
             </p>
           )}
-        </div>
+        </Dialogo>
       )}
     </div>
   );

@@ -13,9 +13,12 @@ import {
   type GastoRepartidoResult,
 } from '../lib/vehiculos/vehiculos-service';
 import { FilasVehiculoMonto, type FilaVehiculo } from './FilasVehiculoMonto';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { InputMonto } from './ui/InputMonto';
+import { Dialogo } from './ui/Dialogo';
+import { Opciones } from './ui/Opciones';
 
-// Saldo negativo con el signo menos típico: "$ −150.000"
-const formatoNegativo = (n: number): string => `$ −${formatMoney(Math.abs(n)).replace('$ ', '')}`;
 import { formatMoney, parseMoneyInput } from '../lib/format/money';
 
 export interface CategoriaGasto {
@@ -253,27 +256,12 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
   if (cuentas.length === 0) {
     return (
       <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-        <header className="flex justify-between items-center py-3 mb-4">
-          <h1 className="text-xl font-bold text-gray-900">{titulo}</h1>
-          <button
-            type="button"
-            onClick={onVolver}
-            className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-          >
-            Volver
-          </button>
-        </header>
+        <Encabezado titulo={titulo} onVolver={onVolver} />
         <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
           <p className="text-sm text-gray-600 mb-4">
             No hay cuentas cargadas todavía. Cargá una cuenta para poder registrar un gasto.
           </p>
-          <button
-            type="button"
-            onClick={onIrACuentas}
-            className="py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-sm"
-          >
-            Cargar la primera cuenta
-          </button>
+          <Boton onClick={onIrACuentas}>Cargar la primera cuenta</Boton>
         </div>
       </div>
     );
@@ -281,29 +269,17 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">{titulo}</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo={titulo} onVolver={onVolver} />
 
       <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-4">
         <div>
           <label htmlFor="gasto-monto" className="block text-xs font-semibold text-gray-700 mb-1">
             Monto ($)
           </label>
-          <input
+          <InputMonto
             id="gasto-monto"
-            type="text"
-            inputMode="numeric"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            valor={monto === '' ? null : parseMoneyInput(monto)}
+            onChange={(n) => setMonto(n === null ? '' : String(n))}
           />
         </div>
 
@@ -316,75 +292,45 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
             type="text"
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
           />
         </div>
 
         <div>
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Categoría</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {categorias.map((c) => {
-              const activa = categoriaId === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  aria-pressed={activa}
-                  onClick={() => setCategoriaId(c.id)}
-                  className={`py-2.5 px-2 text-sm font-medium rounded-xl border ${
-                    activa ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
-                  }`}
-                >
-                  {c.nombre}
-                </button>
-              );
-            })}
-          </div>
+          <Opciones
+            etiqueta="Categoría"
+            columnas={2}
+            opciones={categorias.map((c) => ({ id: c.id, nombre: c.nombre }))}
+            seleccionada={categoriaId}
+            onElegir={setCategoriaId}
+          />
         </div>
         <div>
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">¿De dónde salió la plata?</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {cuentas.map((c) => {
-              const activa = cuentaId === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  aria-pressed={activa}
-                  onClick={() => setCuentaId(c.id)}
-                  className={`py-2 px-2 text-left text-sm rounded-xl border ${
-                    activa ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
-                  }`}
-                >
-                  <span className="block font-medium">{c.nombre}</span>
-                  <span className="block text-xs opacity-80">{formatMoney(c.saldo)}</span>
-                </button>
-              );
-            })}
-          </div>
+          <Opciones
+            etiqueta="¿De dónde salió la plata?"
+            columnas={2}
+            opciones={cuentas.map((c) => ({ id: c.id, nombre: c.nombre, secundario: formatMoney(c.saldo), negativo: c.saldo < 0 }))}
+            seleccionada={cuentaId}
+            onElegir={setCuentaId}
+          />
         </div>
 
         {modo === 'gasto' && (
         <div>
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">¿A qué corresponde?</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {(['general', 'vehiculo', 'varios'] as const).map((a) => {
-              const activa = alcance === a;
-              return (
-                <button
-                  key={a}
-                  type="button"
-                  aria-pressed={activa}
-                  onClick={() => setAlcance(a)}
-                  className={`py-2.5 px-2 text-sm font-medium rounded-xl border ${
-                    activa ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
-                  }`}
-                >
-                  {a === 'general' ? 'General del negocio' : a === 'vehiculo' ? 'Un vehículo' : 'Varios vehículos'}
-                </button>
-              );
-            })}
-          </div>
+          <Opciones
+            etiqueta="¿A qué corresponde?"
+            columnas={2}
+            opciones={[
+              { id: 'general', nombre: 'General del negocio' },
+              { id: 'vehiculo', nombre: 'Un vehículo' },
+              { id: 'varios', nombre: 'Varios vehículos' },
+            ]}
+            seleccionada={alcance}
+            onElegir={(id) => setAlcance(id as 'general' | 'vehiculo' | 'varios')}
+          />
         </div>
         )}
         {modo === 'gasto' && (alcance === 'vehiculo' || alcance === 'varios') && (
@@ -408,7 +354,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
                   value={textoProveedor}
                   onChange={(e) => void buscarProveedor(e.target.value)}
                   placeholder="Buscar por nombre"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
                 />
                 {resultadosProveedor.map((c) => (
                   <button
@@ -430,7 +376,7 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
                       type="text"
                       value={telefonoNuevo}
                       onChange={(e) => setTelefonoNuevo(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
                     />
                     <button
                       type="button"
@@ -457,40 +403,24 @@ export const RegistrarGastoView: React.FC<RegistrarGastoViewProps> = ({
           </p>
         )}
 
-        <button
-          type="button"
-          disabled={!puedeConfirmar || guardando}
-          onClick={intentarConfirmar}
-          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium text-sm rounded-xl shadow-sm"
-        >
-          {guardando ? 'Guardando…' : 'Confirmar'}
-        </button>
+        <Boton anchoCompleto disabled={!puedeConfirmar} guardando={guardando} onClick={intentarConfirmar}>
+          Confirmar
+        </Boton>
 
         {avisoNegativo && (
-          <div role="dialog" aria-modal="true" className="bg-amber-50 border border-amber-300 rounded-xl p-4 space-y-3">
+          <Dialogo titulo="Saldo negativo" onCerrar={() => setAvisoNegativo(null)} guardando={guardando}>
             {avisoNegativo.map((c) => (
-              <p key={c.nombre} className="text-sm text-amber-900">
-                La cuenta {c.nombre} va a quedar en {formatoNegativo(c.saldoResultante)}
+              <p key={c.nombre} className="text-sm text-gray-900">
+                La cuenta {c.nombre} va a quedar en {formatMoney(c.saldoResultante)}
               </p>
             ))}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setAvisoNegativo(null)}
-                className="flex-1 py-2 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg"
-              >
-                Volver
-              </button>
-              <button
-                type="button"
-                disabled={guardando}
-                onClick={() => void enviar()}
-                className="flex-1 py-2 bg-amber-600 disabled:opacity-50 text-white text-sm rounded-lg"
-              >
-                {guardando ? 'Guardando…' : 'Confirmar igual'}
-              </button>
-            </div>
-          </div>
+            <Boton anchoCompleto variante="peligro" guardando={guardando} onClick={() => void enviar()}>
+              Confirmar igual
+            </Boton>
+            <Boton anchoCompleto variante="secundario" onClick={() => setAvisoNegativo(null)}>
+              Volver
+            </Boton>
+          </Dialogo>
         )}
 
         {alcance === 'varios' && (

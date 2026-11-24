@@ -1,11 +1,17 @@
 import React from 'react';
 import type { PendienteAsignar, PendientesResult } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
+import { Encabezado } from './ui/Encabezado';
+import { Cargando } from './ui/Cargando';
+import { ErrorReintentar } from './ui/ErrorReintentar';
 
 export interface PendientesAsignarViewProps {
   pendientes: PendientesResult;
   onAsignar: (gasto: PendienteAsignar) => void;
   onVolver: () => void;
+  cargando?: boolean;
+  errorCarga?: boolean;
+  onReintentar?: () => void;
 }
 
 // "2026-11-14" -> "14/11/2026" (sin pasar por Date, para no desfasar la fecha)
@@ -14,21 +20,22 @@ const formatoFecha = (iso: string): string => {
   return `${dia}/${mes}/${anio}`;
 };
 
-export const PendientesAsignarView: React.FC<PendientesAsignarViewProps> = ({ pendientes, onAsignar, onVolver }) => {
+export const PendientesAsignarView: React.FC<PendientesAsignarViewProps> = ({
+  pendientes,
+  onAsignar,
+  onVolver,
+  cargando = false,
+  errorCarga = false,
+  onReintentar,
+}) => {
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Pendientes de asignar</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Pendientes de asignar" onVolver={onVolver} />
 
-      {pendientes.grupos.length === 0 ? (
+      {errorCarga && <ErrorReintentar onReintentar={onReintentar ?? (() => undefined)} />}
+      {cargando && pendientes.grupos.length === 0 && <Cargando />}
+
+      {!errorCarga && !(cargando && pendientes.grupos.length === 0) && (pendientes.grupos.length === 0 ? (
         <p className="text-sm text-gray-600 bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
           No hay gastos pendientes de asignar
         </p>
@@ -66,7 +73,7 @@ export const PendientesAsignarView: React.FC<PendientesAsignarViewProps> = ({ pe
             ))}
           </div>
         </>
-      )}
+      ))}
     </div>
   );
 };

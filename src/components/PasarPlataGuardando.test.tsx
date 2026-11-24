@@ -37,6 +37,6 @@ describe('PasarPlataView: Guardando…', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Sin conexión');
     expect(screen.getByRole('button', { name: /pasar plata/i })).toBeEnabled();
-    expect(screen.getByLabelText(/monto/i)).toHaveValue('1000000');
+    expect(screen.getByLabelText(/monto/i)).toHaveValue('$ 1.000.000');
   });
 });

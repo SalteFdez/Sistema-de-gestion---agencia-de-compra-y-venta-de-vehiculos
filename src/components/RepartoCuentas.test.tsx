@@ -15,7 +15,7 @@ describe('RepartoCuentas', () => {
     render(<RepartoCuentas cuentas={cuentas} precio={3000000} onChange={onChange} />);
 
     expect(screen.getByLabelText(/cuenta de pago 1/i)).toHaveValue('c1');
-    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('3000000');
+    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('$ 3.000.000');
   });
 
   it('"+ Agregar otra cuenta" suma una fila con una cuenta que todavía no está en el reparto', () => {
@@ -60,7 +60,7 @@ describe('RepartoCuentas', () => {
     rerender(<RepartoCuentas cuentas={cuentas} precio={3000000} onChange={vi.fn()} />);
 
     expect(screen.getByLabelText(/cuenta de pago 1/i)).toHaveValue('c1');
-    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('3000000');
+    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('$ 3.000.000');
   });
 
   it('con una sola fila, el monto sigue al precio cuando el precio cambia', () => {
@@ -68,7 +68,7 @@ describe('RepartoCuentas', () => {
 
     rerender(<RepartoCuentas cuentas={cuentas} precio={4000000} onChange={vi.fn()} />);
 
-    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('4000000');
+    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('$ 4.000.000');
   });
 
   it('se puede quitar una fila agregada, y la primera no se quita', () => {

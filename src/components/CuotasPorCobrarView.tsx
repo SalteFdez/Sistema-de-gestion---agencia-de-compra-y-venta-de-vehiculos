@@ -1,11 +1,18 @@
 import React from 'react';
 import type { CuotaPorCobrar } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { Cargando } from './ui/Cargando';
+import { ErrorReintentar } from './ui/ErrorReintentar';
 
 export interface CuotasPorCobrarViewProps {
   cuotas: CuotaPorCobrar[];
   onCobrar: (cuota: CuotaPorCobrar) => void;
   onVolver: () => void;
+  cargando?: boolean;
+  errorCarga?: boolean;
+  onReintentar?: () => void;
 }
 
 // "2027-01-15" -> "15/01/2027" (sin pasar por Date)
@@ -25,7 +32,14 @@ const ETIQUETA_ESTADO: Record<string, string> = {
 export const contarVencidas = (cuotas: CuotaPorCobrar[]): number =>
   cuotas.filter((c) => c.estado === 'vencida').length;
 
-export const CuotasPorCobrarView: React.FC<CuotasPorCobrarViewProps> = ({ cuotas, onCobrar, onVolver }) => {
+export const CuotasPorCobrarView: React.FC<CuotasPorCobrarViewProps> = ({
+  cuotas,
+  onCobrar,
+  onVolver,
+  cargando = false,
+  errorCarga = false,
+  onReintentar,
+}) => {
   // Vencidas primero; dentro de cada grupo, por vencimiento
   const ordenadas = [...cuotas].sort((a, b) => {
     const va = a.estado === 'vencida' ? 0 : 1;
@@ -36,18 +50,12 @@ export const CuotasPorCobrarView: React.FC<CuotasPorCobrarViewProps> = ({ cuotas
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Cuotas por cobrar</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Cuotas por cobrar" onVolver={onVolver} />
 
-      {ordenadas.length === 0 ? (
+      {errorCarga && <ErrorReintentar onReintentar={onReintentar ?? (() => undefined)} />}
+      {cargando && cuotas.length === 0 && <Cargando />}
+
+      {!errorCarga && !(cargando && cuotas.length === 0) && (ordenadas.length === 0 ? (
         <p className="text-sm text-gray-600 bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
           No hay cuotas por cobrar
         </p>
@@ -86,19 +94,13 @@ export const CuotasPorCobrarView: React.FC<CuotasPorCobrarViewProps> = ({ cuotas
                 )}
                 <div className="flex justify-between items-center mt-3">
                   <span className="text-xs font-semibold text-gray-600">{ETIQUETA_ESTADO[c.estado] ?? c.estado}</span>
-                  <button
-                    type="button"
-                    onClick={() => onCobrar(c)}
-                    className="py-1.5 px-4 bg-blue-600 text-white text-sm font-semibold rounded-lg"
-                  >
-                    Cobrar
-                  </button>
+                  <Boton onClick={() => onCobrar(c)}>Cobrar</Boton>
                 </div>
               </article>
             );
           })}
         </div>
-      )}
+      ))}
     </div>
   );
 };

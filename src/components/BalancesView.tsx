@@ -1,6 +1,10 @@
 import React from 'react';
 import type { CuentaItem } from '../lib/cuentas/cuentas-service';
 import { formatMoney } from '../lib/format/money';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { Cargando } from './ui/Cargando';
+import { ErrorReintentar } from './ui/ErrorReintentar';
 import type { CuotaPorCobrar } from '../lib/vehiculos/vehiculos-service';
 
 export interface BalancesViewProps {
@@ -15,6 +19,11 @@ export interface BalancesViewProps {
   proximasCuotas?: CuotaPorCobrar[];
   /** Abre la ganancia por mes */
   onVerGananciaMensual?: () => void;
+  /** Mientras llegan las cuentas: "Cargando…" en vez de "$ 0" */
+  cargandoCuentas?: boolean;
+  /** Si falla la carga de cuentas: "No se pudo cargar" con Reintentar */
+  errorCuentas?: boolean;
+  onReintentar?: () => void;
   onVolver: () => void;
   onIrACuentas: () => void;
 }
@@ -28,34 +37,35 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
   errorPorCobrar = false,
   proximasCuotas = [],
   onVerGananciaMensual,
+  cargandoCuentas = false,
+  errorCuentas = false,
+  onReintentar,
   onVolver,
   onIrACuentas,
 }) => {
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      {/* Header con botón volver */}
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Balances</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Balances" onVolver={onVolver} />
 
       {/* Card principal: Dinero disponible */}
       <section className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm text-center mb-6">
         <span className="text-xs uppercase font-semibold text-gray-500 tracking-wider">
           Dinero disponible
         </span>
-        <div
-          data-testid="total-disponible"
-          className="text-3xl sm:text-4xl font-extrabold text-gray-900 mt-2 mb-1"
-        >
-          {formatMoney(totalDisponible)}
-        </div>
+        {errorCuentas ? (
+          <div className="mt-2">
+            <ErrorReintentar onReintentar={onReintentar ?? (() => undefined)} />
+          </div>
+        ) : cargandoCuentas ? (
+          <Cargando />
+        ) : (
+          <div
+            data-testid="total-disponible"
+            className="text-3xl sm:text-4xl font-extrabold text-gray-900 mt-2 mb-1"
+          >
+            {formatMoney(totalDisponible)}
+          </div>
+        )}
         <p className="text-xs text-gray-500">Total en efectivo, bancos y billeteras</p>
       </section>
 
@@ -140,13 +150,7 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
             <p className="text-sm text-gray-600 mb-4">
               No hay cuentas cargadas todavía.
             </p>
-            <button
-              type="button"
-              onClick={onIrACuentas}
-              className="py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl transition-colors shadow-sm"
-            >
-              Cargar primera cuenta
-            </button>
+            <Boton onClick={onIrACuentas}>Cargar primera cuenta</Boton>
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -163,7 +167,7 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
                     {cuenta.tipo}
                   </span>
                 </div>
-                <div className="text-base font-bold text-gray-900 whitespace-nowrap">
+                <div className={`text-base font-bold whitespace-nowrap ${cuenta.saldo < 0 ? 'text-red-600' : 'text-gray-900'}`}>
                   {formatMoney(cuenta.saldo)}
                 </div>
               </div>

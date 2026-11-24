@@ -38,6 +38,6 @@ describe('MovimientoSocioView: Guardando…', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Sin conexión');
     expect(screen.getByRole('button', { name: /registrar aporte/i })).toBeEnabled();
-    expect(screen.getByLabelText(/monto/i)).toHaveValue('500000');
+    expect(screen.getByLabelText(/monto/i)).toHaveValue('$ 500.000');
   });
 });

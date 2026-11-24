@@ -25,19 +25,20 @@ describe('MovimientoSocioView: selección y saldo', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /caja efectivo/i })).toHaveTextContent('Caja efectivo · $ 3.000.000');
+    expect(screen.getByRole('button', { name: /caja efectivo/i })).toHaveTextContent('Caja efectivo');
+    expect(screen.getByRole('button', { name: /caja efectivo/i })).toHaveTextContent('$ 3.000.000');
 
     const socio = within(screen.getByRole('group', { name: 'Socio' }));
-    expect(socio.getByRole('button', { name: 'Agustín Fernandez' })).toHaveClass('bg-blue-600', 'text-white');
+    expect(socio.getByRole('button', { name: 'Agustín Fernandez' })).toHaveClass('bg-marca', 'text-white');
     fireEvent.click(socio.getByRole('button', { name: 'Lautaro' }));
     expect(socio.getByRole('button', { name: 'Lautaro' })).toHaveAttribute('aria-pressed', 'true');
-    expect(socio.getByRole('button', { name: 'Lautaro' })).toHaveClass('bg-blue-600', 'text-white');
+    expect(socio.getByRole('button', { name: 'Lautaro' })).toHaveClass('bg-marca', 'text-white');
     expect(socio.getByRole('button', { name: 'Agustín Fernandez' })).toHaveAttribute('aria-pressed', 'false');
-    expect(socio.getByRole('button', { name: 'Agustín Fernandez' })).not.toHaveClass('bg-blue-600');
+    expect(socio.getByRole('button', { name: 'Agustín Fernandez' })).not.toHaveClass('bg-marca');
 
     const cuenta = within(screen.getByRole('group', { name: 'Cuenta' }));
     fireEvent.click(cuenta.getByRole('button', { name: /banco/i }));
-    expect(cuenta.getByRole('button', { name: /banco/i })).toHaveClass('bg-blue-600', 'text-white');
-    expect(cuenta.getByRole('button', { name: /caja efectivo/i })).not.toHaveClass('bg-blue-600');
+    expect(cuenta.getByRole('button', { name: /banco/i })).toHaveClass('bg-marca', 'text-white');
+    expect(cuenta.getByRole('button', { name: /caja efectivo/i })).not.toHaveClass('bg-marca');
   });
 });

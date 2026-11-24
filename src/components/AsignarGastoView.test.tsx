@@ -18,7 +18,7 @@ describe('AsignarGastoView', () => {
   it('la primera fila viene precargada con todo lo pendiente', () => {
     render(<AsignarGastoView gasto={gasto} vehiculos={vehiculos} onAsignar={vi.fn()} onVolver={vi.fn()} />);
 
-    expect(screen.getByLabelText('Monto del vehículo')).toHaveValue('100000');
+    expect(screen.getByLabelText('Monto del vehículo')).toHaveValue('$ 100.000');
     expect(screen.getByText(/Asignado \$ 100\.000/)).toBeInTheDocument();
     expect(screen.getByText(/Queda pendiente \$ 0/)).toBeInTheDocument();
   });
@@ -76,6 +76,6 @@ describe('AsignarGastoView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar asignación' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/otro socio ya asignó/i);
-    expect(screen.getByLabelText('Monto del vehículo')).toHaveValue('100000');
+    expect(screen.getByLabelText('Monto del vehículo')).toHaveValue('$ 100.000');
   });
 });

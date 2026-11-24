@@ -8,10 +8,17 @@ import type {
 import { comprimirFotoEnNavegador } from '../lib/vehiculos/comprimir-foto';
 import { CargarStockForm } from './CargarStockForm';
 import { coincideBusqueda } from '../lib/vehiculos/busqueda';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { BadgeEstado } from './ui/BadgeEstado';
+import { Cargando } from './ui/Cargando';
+import { ErrorReintentar } from './ui/ErrorReintentar';
 
 export interface VehiculosViewProps {
   vehiculos: VehiculoItem[];
   errorCarga?: boolean;
+  /** Mientras llegan los vehículos: se muestra "Cargando…" en vez de una lista vacía */
+  cargando?: boolean;
   onReintentar?: () => void;
   onVolver: () => void;
   onCargarStock?: (params: CargarStockParams) => Promise<CargarStockResult>;
@@ -28,15 +35,10 @@ export interface VehiculosViewProps {
 
 export type FiltroEstado = 'stock' | 'vendidos' | 'todos';
 
-const ETIQUETA_ESTADO: Record<VehiculoItem['estado'], string> = {
-  en_stock: 'En stock',
-  reservado: 'Reservado',
-  vendido: 'Vendido',
-};
-
 export const VehiculosView: React.FC<VehiculosViewProps> = ({
   vehiculos,
   errorCarga = false,
+  cargando = false,
   onReintentar,
   onVolver,
   onCargarStock,
@@ -96,16 +98,7 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Vehículos</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Vehículos" onVolver={onVolver} />
 
       <div className="mb-4">
         {mostrarFormulario ? (
@@ -115,26 +108,15 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
             comprimirFoto={comprimirFoto}
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => setMostrarFormulario(true)}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-sm"
-          >
+          <Boton anchoCompleto onClick={() => setMostrarFormulario(true)}>
             Cargar stock existente
-          </button>
+          </Boton>
         )}
       </div>
 
       {errorCarga && (
-        <div role="alert" className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-          <p className="text-sm text-red-700 mb-3">No se pudieron cargar los vehículos.</p>
-          <button
-            type="button"
-            onClick={onReintentar}
-            className="py-2 px-4 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
-          >
-            Reintentar
-          </button>
+        <div className="mb-4">
+          <ErrorReintentar onReintentar={onReintentar ?? (() => undefined)} />
         </div>
       )}
 
@@ -147,7 +129,7 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
           placeholder="Buscar por código, marca, modelo o patente"
           value={busquedaActual}
           onChange={(e) => setBusqueda(e.target.value)}
-          className="w-full border border-gray-300 rounded-xl pl-9 pr-9 py-2.5 text-sm bg-white"
+          className="w-full border border-gray-300 rounded-xl pl-9 pr-9 py-2.5 text-base bg-white"
         />
         {busquedaActual !== '' && (
           <button
@@ -181,7 +163,9 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
         })}
       </div>
 
-      {visibles.length === 0 && (
+      {cargando && vehiculos.length === 0 && <Cargando />}
+
+      {visibles.length === 0 && !(cargando && vehiculos.length === 0) && (
         <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center mb-4">
           <p className="text-sm text-gray-600">
             {busquedaActual.trim() !== ''
@@ -258,9 +242,9 @@ export const VehiculosView: React.FC<VehiculosViewProps> = ({
                   {v.anio}
                   {v.color ? ` · ${v.color}` : ''}
                 </p>
-                <span className="inline-block mt-2 text-xs font-medium text-green-700 bg-green-50 rounded px-2 py-0.5">
-                  {ETIQUETA_ESTADO[v.estado]}
-                </span>
+                <div className="mt-2">
+                  <BadgeEstado estado={v.estado} />
+                </div>
               </div>
             </article>
           );

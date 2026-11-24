@@ -1,5 +1,11 @@
 @import 'tailwindcss';
 
+/* Color de marca: cambiar la identidad visual es tocar estas dos líneas */
+@theme {
+  --color-marca: #2563eb;
+  --color-marca-oscuro: #1d4ed8;
+}
+
 /* Compatibilidad v4: el color de borde por defecto pasa a ser currentColor. */
 @layer base {
   *, ::after, ::before, ::backdrop, ::file-selector-button {

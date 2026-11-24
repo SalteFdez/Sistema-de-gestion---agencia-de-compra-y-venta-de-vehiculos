@@ -32,7 +32,7 @@ describe('CompraVehiculoView', () => {
 
     fireEvent.change(screen.getByLabelText(/precio de compra/i), { target: { value: '3000000' } });
 
-    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('3000000');
+    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('$ 3.000.000');
   });
 
   it('muestra cuánto falta para cerrar el precio con los pagos, y Confirmar queda deshabilitado', () => {
@@ -222,7 +222,7 @@ describe('CompraVehiculoView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/no se guardó nada/i);
     expect(screen.getByLabelText(/marca/i)).toHaveValue('Fiat');
-    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('1500000');
+    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('$ 1.500.000');
     expect(screen.getByRole('button', { name: /confirmar/i })).toBeEnabled();
     expect(screen.queryByTestId('codigo-compra')).not.toBeInTheDocument();
   });

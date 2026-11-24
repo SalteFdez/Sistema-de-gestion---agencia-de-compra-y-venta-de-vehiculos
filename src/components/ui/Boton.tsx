@@ -1,0 +1,41 @@
+import React from 'react';
+
+export type VarianteBoton = 'primario' | 'secundario' | 'peligro';
+
+export interface BotonProps {
+  variante?: VarianteBoton;
+  /** Ancho completo del contenedor */
+  anchoCompleto?: boolean;
+  /** Mientras se guarda: deshabilitado y con "Guardando…" (evita el doble toque) */
+  guardando?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  /** "submit" para enviar un formulario */
+  tipo?: 'button' | 'submit';
+  children: React.ReactNode;
+}
+
+const CLASES_VARIANTE: Record<VarianteBoton, string> = {
+  primario: 'bg-marca hover:bg-marca-oscuro text-white border border-transparent',
+  secundario: 'bg-white text-gray-800 border border-gray-300',
+  peligro: 'bg-red-600 hover:bg-red-700 text-white border border-transparent',
+};
+
+export const Boton: React.FC<BotonProps> = ({
+  variante = 'primario',
+  anchoCompleto = false,
+  guardando = false,
+  disabled = false,
+  onClick,
+  tipo = 'button',
+  children,
+}) => (
+  <button
+    type={tipo}
+    disabled={disabled || guardando}
+    onClick={guardando ? undefined : onClick}
+    className={`min-h-11 px-4 text-sm font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed ${CLASES_VARIANTE[variante]} ${anchoCompleto ? 'w-full' : ''}`}
+  >
+    {guardando ? 'Guardando…' : children}
+  </button>
+);

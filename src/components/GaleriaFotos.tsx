@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import type { FotoVehiculo } from '../lib/vehiculos/vehiculos-service';
+import { Boton } from './ui/Boton';
 
 export interface GaleriaFotosProps {
   fotos: FotoVehiculo[];
@@ -114,13 +115,9 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
 
       {!anulado && (
         <div className="px-3 space-y-2">
-          <button
-            type="button"
-            onClick={() => entrada.current?.click()}
-            className="w-full py-2 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg"
-          >
+          <Boton anchoCompleto variante="secundario" onClick={() => entrada.current?.click()}>
             Agregar fotos
-          </button>
+          </Boton>
           <input
             ref={entrada}
             type="file"
@@ -135,44 +132,32 @@ export const GaleriaFotos: React.FC<GaleriaFotosProps> = ({
           />
 
           {!seleccionada.esPrincipal && (
-            <button
-              type="button"
-              onClick={() => onUsarComoPrincipal(seleccionada.id)}
-              className="w-full py-2 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg"
-            >
+            <Boton anchoCompleto variante="secundario" onClick={() => onUsarComoPrincipal(seleccionada.id)}>
               Usar como principal
-            </button>
+            </Boton>
           )}
 
           {!confirmandoQuitar ? (
-            <button
-              type="button"
-              onClick={() => setConfirmandoQuitar(true)}
-              className="w-full py-2 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
-            >
+            <Boton anchoCompleto variante="secundario" onClick={() => setConfirmandoQuitar(true)}>
               Quitar foto
-            </button>
+            </Boton>
           ) : (
             <div role="group" aria-label="¿Seguro?" className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
               <p className="text-sm text-red-900">¿Seguro? La foto deja de verse en la galería. El archivo queda guardado.</p>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setConfirmandoQuitar(false)}
-                  className="flex-1 py-2 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg"
-                >
+                <Boton anchoCompleto variante="secundario" onClick={() => setConfirmandoQuitar(false)}>
                   Volver
-                </button>
-                <button
-                  type="button"
+                </Boton>
+                <Boton
+                  anchoCompleto
+                  variante="peligro"
                   onClick={() => {
                     setConfirmandoQuitar(false);
                     onQuitar(seleccionada.id);
                   }}
-                  className="flex-1 py-2 bg-red-600 text-white text-sm rounded-lg"
                 >
                   Sí, quitar
-                </button>
+                </Boton>
               </div>
             </div>
           )}

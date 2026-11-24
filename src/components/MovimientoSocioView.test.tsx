@@ -56,7 +56,7 @@ describe('MovimientoSocioView', () => {
     fireEvent.click(screen.getByRole('button', { name: /registrar retiro/i }));
 
     expect(onRegistrar).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('La cuenta Caja efectivo va a quedar en $ −1.000.000');
+    expect(screen.getByRole('dialog')).toHaveTextContent('La cuenta Caja efectivo va a quedar en $ −1.000.000');
 
     fireEvent.click(screen.getByRole('button', { name: /confirmar igual/i }));
     expect(onRegistrar).toHaveBeenCalledWith(expect.objectContaining({ socioId: 'u1', cuentaId: 'c1', monto: 4000000 }));
@@ -103,7 +103,7 @@ describe('MovimientoSocioView', () => {
     fireEvent.click(screen.getByRole('button', { name: /registrar aporte/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo confirmar/i);
-    expect(screen.getByLabelText(/monto/i)).toHaveValue('500000');
+    expect(screen.getByLabelText(/monto/i)).toHaveValue('$ 500.000');
     expect(within(screen.getByRole('group', { name: 'Socio' })).getByRole('button', { name: 'Lautaro' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(screen.getByRole('group', { name: 'Cuenta' })).getByRole('button', { name: /caja efectivo/i })).toHaveAttribute('aria-pressed', 'true');
   });

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { VehiculoItem } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
+import { InputMonto } from './ui/InputMonto';
 
 export interface FilaVehiculo {
   vehiculoId: string;
@@ -64,7 +65,7 @@ export const FilasVehiculoMonto: React.FC<FilasVehiculoMontoProps> = ({
               aria-label="Vehículo"
               value={f.vehiculoId}
               onChange={(e) => cambiar(i, { vehiculoId: e.target.value })}
-              className="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white"
+              className="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-base bg-white"
             >
               {opciones.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -72,13 +73,11 @@ export const FilasVehiculoMonto: React.FC<FilasVehiculoMontoProps> = ({
                 </option>
               ))}
             </select>
-            <input
+            <InputMonto
               aria-label="Monto del vehículo"
-              type="text"
-              inputMode="numeric"
-              value={f.monto ? String(f.monto) : ''}
-              onChange={(e) => cambiar(i, { monto: Number(e.target.value.replace(/\D/g, '')) })}
-              className="w-28 border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white"
+              valor={f.monto || null}
+              onChange={(n) => cambiar(i, { monto: n ?? 0 })}
+              className="w-32"
             />
             <button
               type="button"

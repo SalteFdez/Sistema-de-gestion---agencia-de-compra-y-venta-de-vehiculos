@@ -174,7 +174,7 @@ describe('RegistrarGastoView', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/no se guardó nada/i);
-    expect(screen.getByLabelText(/monto/i)).toHaveValue('250000');
+    expect(screen.getByLabelText(/monto/i)).toHaveValue('$ 250.000');
     expect(screen.getByRole('button', { name: /confirmar/i })).toBeEnabled();
   });
 

@@ -85,7 +85,7 @@ describe('VenderVehiculoView: elegir vehículo', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('MC-001 ya está vendido. No se guardó nada.');
     expect(screen.queryByTestId('codigo-venta')).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/precio de venta/i)).toHaveValue('6000000');
+    expect(screen.getByLabelText(/precio de venta/i)).toHaveValue('$ 6.000.000');
     expect(screen.getByRole('button', { name: /confirmar/i })).toBeEnabled();
   });
 

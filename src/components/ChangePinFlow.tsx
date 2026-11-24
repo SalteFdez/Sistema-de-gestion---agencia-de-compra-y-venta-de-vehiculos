@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { DeviceAuthService } from '../lib/auth/device-auth';
 import type { PinLockout, LockoutStatus } from '../lib/auth/pin-lockout';
 import { PinKeypad } from './PinKeypad';
+import { Boton } from './ui/Boton';
 
 export interface ChangePinFlowProps {
   authService: DeviceAuthService;
@@ -103,13 +104,9 @@ export const ChangePinFlow: React.FC<ChangePinFlowProps> = ({
         <p className="text-sm text-gray-600 mb-6">
           A partir de ahora ingresás con tu nuevo PIN.
         </p>
-        <button
-          type="button"
-          onClick={onDone}
-          className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl shadow-sm transition-colors"
-        >
+        <Boton anchoCompleto onClick={onDone}>
           Listo
-        </button>
+        </Boton>
       </div>
     );
   }

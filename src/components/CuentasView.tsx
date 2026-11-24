@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import type { CuentaItem, CuentasService, TipoCuenta } from '../lib/cuentas/cuentas-service';
 import { formatMoney, parseMoneyInput } from '../lib/format/money';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { InputMonto } from './ui/InputMonto';
 
 export interface CuentasViewProps {
   cuentasIniciales: CuentaItem[];
@@ -21,11 +24,6 @@ export const CuentasView: React.FC<CuentasViewProps> = ({
   const [saldoStr, setSaldoStr] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-
-  const handleSaldoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const parsed = parseMoneyInput(e.target.value);
-    setSaldoStr(parsed === 0 ? '' : parsed.toString());
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,16 +75,7 @@ export const CuentasView: React.FC<CuentasViewProps> = ({
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
       {/* Header */}
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Cuentas</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Cuentas" onVolver={onVolver} />
 
       {/* Formulario de carga */}
       <section className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm mb-6">
@@ -109,7 +98,7 @@ export const CuentasView: React.FC<CuentasViewProps> = ({
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               placeholder="Ej. Caja efectivo, Banco Galicia"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-marca"
             />
           </div>
 
@@ -121,7 +110,7 @@ export const CuentasView: React.FC<CuentasViewProps> = ({
               id="cuenta-tipo"
               value={tipo}
               onChange={(e) => setTipo(e.target.value as TipoCuenta)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-marca bg-white"
             >
               <option value="efectivo">Efectivo</option>
               <option value="banco">Banco</option>
@@ -133,24 +122,16 @@ export const CuentasView: React.FC<CuentasViewProps> = ({
             <label htmlFor="cuenta-saldo" className="block text-xs font-semibold text-gray-600 mb-1">
               Saldo inicial (ARS)
             </label>
-            <input
+            <InputMonto
               id="cuenta-saldo"
-              type="text"
-              inputMode="numeric"
-              value={saldoStr ? formatMoney(parseMoneyInput(saldoStr)) : ''}
-              onChange={handleSaldoChange}
-              placeholder="$ 0"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              valor={saldoStr === '' ? null : parseMoneyInput(saldoStr)}
+              onChange={(n) => setSaldoStr(n === null ? '' : String(n))}
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={guardando}
-            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium text-sm rounded-xl transition-colors shadow-sm mt-2"
-          >
-            {guardando ? 'Guardando...' : 'Guardar cuenta'}
-          </button>
+          <Boton anchoCompleto tipo="submit" guardando={guardando}>
+            Guardar cuenta
+          </Boton>
         </form>
       </section>
 
@@ -170,7 +151,9 @@ export const CuentasView: React.FC<CuentasViewProps> = ({
                   <div className="font-semibold text-gray-900 text-sm">{c.nombre}</div>
                   <span className="text-[11px] text-gray-500 capitalize">{c.tipo}</span>
                 </div>
-                <div className="text-sm font-bold text-gray-900">{formatMoney(c.saldo)}</div>
+                <div className={`text-sm font-bold whitespace-nowrap ${c.saldo < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                  {formatMoney(c.saldo)}
+                </div>
               </div>
             ))}
           </div>

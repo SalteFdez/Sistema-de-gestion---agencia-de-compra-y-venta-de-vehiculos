@@ -61,7 +61,7 @@ describe('VenderVehiculoView: financiación', () => {
     elegirFinanciacion();
     llenarFinanciacion('2000000', '4');
 
-    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('3000000');
+    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('$ 3.000.000');
   });
 
   it('Confirmar queda deshabilitado si el financiado supera lo que queda, o si la cantidad de cuotas es 0', () => {

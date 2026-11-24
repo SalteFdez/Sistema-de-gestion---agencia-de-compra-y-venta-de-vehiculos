@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { CuentaItem } from '../lib/cuentas/cuentas-service';
 import { formatMoney, parseMoneyInput } from '../lib/format/money';
+import { InputMonto } from './ui/InputMonto';
 
 export interface FilaReparto {
   cuentaId: string;
@@ -51,7 +52,7 @@ export const RepartoCuentas: React.FC<RepartoCuentasProps> = ({ cuentas, precio,
             aria-label={`Cuenta de pago ${i + 1}`}
             value={fila.cuentaId}
             onChange={(e) => setFilas((prev) => prev.map((f, j) => (j === i ? { ...f, cuentaId: e.target.value } : f)))}
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base"
           >
             {cuentas.map((c) => (
               <option key={c.id} value={c.id}>
@@ -59,13 +60,13 @@ export const RepartoCuentas: React.FC<RepartoCuentasProps> = ({ cuentas, precio,
               </option>
             ))}
           </select>
-          <input
+          <InputMonto
             aria-label={`Monto pago ${i + 1}`}
-            type="text"
-            inputMode="numeric"
-            value={fila.monto}
-            onChange={(e) => setFilas((prev) => prev.map((f, j) => (j === i ? { ...f, monto: e.target.value } : f)))}
-            className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            valor={fila.monto === '' ? null : parseMoneyInput(fila.monto)}
+            onChange={(n) =>
+              setFilas((prev) => prev.map((f, j) => (j === i ? { ...f, monto: n === null ? '' : String(n) } : f)))
+            }
+            className="w-36"
           />
           {i > 0 && (
             <button

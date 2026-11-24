@@ -9,6 +9,10 @@ import { formatMoney, parseMoneyInput } from '../lib/format/money';
 import { RepartoCuentas, type FilaReparto } from './RepartoCuentas';
 import { dividirCuotas } from '../lib/vehiculos/cuotas';
 import { validarFinanciacion, hoyBuenosAires } from '../lib/vehiculos/financiacion';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { InputMonto } from './ui/InputMonto';
+import { Opciones } from './ui/Opciones';
 
 export interface VenderVehiculoViewProps {
   vehiculos: VehiculoItem[];
@@ -70,7 +74,7 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   onRegistrar,
 }) => {
   const [elegido, setElegido] = useState<VehiculoItem | null>(null);
-  const [precio, setPrecio] = useState<string>('');
+  const [precio, setPrecio] = useState<number | null>(null);
   const [comprador, setComprador] = useState<string>('');
   const [cobros, setCobros] = useState<FilaReparto[]>([]);
   const [confirmacion, setConfirmacion] = useState<Confirmacion | null>(null);
@@ -91,7 +95,7 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
   // Solo se pueden vender los vehículos en stock
   const enStock = vehiculos.filter((v) => v.estado === 'en_stock');
 
-  const precioNumero = parseMoneyInput(precio);
+  const precioNumero = precio ?? 0;
   const permutasActivas = recibe ? permutas : [];
   const sumaPermutas = permutasActivas.reduce((acc, p) => acc + parseMoneyInput(p.valor), 0);
   const financiadoNumero = financia ? parseMoneyInput(montoFinanciado) : 0;
@@ -260,16 +264,7 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Vender vehículo</h1>
-        <button
-          type="button"
-          onClick={elegido ? () => setElegido(null) : onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Vender vehículo" onVolver={elegido ? () => setElegido(null) : onVolver} />
 
       {elegido && cuentas.length === 0 ? (
         <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
@@ -287,14 +282,7 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
             <label htmlFor="venta-precio" className="block text-xs font-semibold text-gray-700 mb-1">
               Precio de venta ($)
             </label>
-            <input
-              id="venta-precio"
-              type="text"
-              inputMode="numeric"
-              value={precio}
-              onChange={(e) => setPrecio(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
+            <InputMonto id="venta-precio" valor={precio} onChange={setPrecio} />
           </div>
 
           <div>
@@ -306,31 +294,23 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
               type="text"
               value={comprador}
               onChange={(e) => setComprador(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
 
           <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
             ¿Recibís un vehículo en parte de pago?
           </h3>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { si: false, etiqueta: 'No' },
-              { si: true, etiqueta: 'Sí' },
-            ].map((op) => (
-              <button
-                key={op.etiqueta}
-                type="button"
-                aria-pressed={recibe === op.si}
-                onClick={() => elegirRecibe(op.si)}
-                className={`py-2.5 text-sm font-medium rounded-xl border ${
-                  recibe === op.si ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
-                }`}
-              >
-                {op.etiqueta}
-              </button>
-            ))}
-          </div>
+          <Opciones
+            etiqueta="¿Recibís un vehículo en parte de pago?"
+            columnas={2}
+            opciones={[
+              { id: 'no', nombre: 'No' },
+              { id: 'si', nombre: 'Sí' },
+            ]}
+            seleccionada={recibe ? 'si' : 'no'}
+            onElegir={(id) => elegirRecibe(id === 'si')}
+          />
 
           {recibe && (
             <div className="space-y-3">
@@ -352,37 +332,36 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
                       <label htmlFor={`perm-marca-${p.key}`} className="block text-xs text-gray-700 mb-1">Marca</label>
                       <input id={`perm-marca-${p.key}`} aria-label="Marca" type="text" value={p.marca}
                         onChange={(e) => actualizarPermuta(p.key, { marca: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-base" />
                     </div>
                     <div>
                       <label htmlFor={`perm-modelo-${p.key}`} className="block text-xs text-gray-700 mb-1">Modelo</label>
                       <input id={`perm-modelo-${p.key}`} aria-label="Modelo" type="text" value={p.modelo}
                         onChange={(e) => actualizarPermuta(p.key, { modelo: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-base" />
                     </div>
                     <div>
                       <label htmlFor={`perm-anio-${p.key}`} className="block text-xs text-gray-700 mb-1">Año</label>
                       <input id={`perm-anio-${p.key}`} aria-label="Año" type="text" inputMode="numeric" value={p.anio}
                         onChange={(e) => actualizarPermuta(p.key, { anio: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-base" />
                     </div>
                     <div>
                       <label htmlFor={`perm-valor-${p.key}`} className="block text-xs text-gray-700 mb-1">Valor pactado ($)</label>
-                      <input id={`perm-valor-${p.key}`} aria-label="Valor pactado ($)" type="text" inputMode="numeric" value={p.valor}
-                        onChange={(e) => actualizarPermuta(p.key, { valor: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                      <InputMonto id={`perm-valor-${p.key}`} aria-label="Valor pactado ($)" valor={p.valor === '' ? null : parseMoneyInput(p.valor)}
+                        onChange={(n) => actualizarPermuta(p.key, { valor: n === null ? '' : String(n) })} />
                     </div>
                     <div>
                       <label htmlFor={`perm-color-${p.key}`} className="block text-xs text-gray-700 mb-1">Color (opcional)</label>
                       <input id={`perm-color-${p.key}`} aria-label="Color (opcional)" type="text" value={p.color}
                         onChange={(e) => actualizarPermuta(p.key, { color: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-base" />
                     </div>
                     <div>
                       <label htmlFor={`perm-patente-${p.key}`} className="block text-xs text-gray-700 mb-1">Patente (opcional)</label>
                       <input id={`perm-patente-${p.key}`} aria-label="Patente (opcional)" type="text" value={p.patente}
                         onChange={(e) => actualizarPermuta(p.key, { patente: e.target.value })}
-                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-base" />
                     </div>
                   </div>
                   <div>
@@ -405,33 +384,27 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
           )}
 
           <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">¿Hay financiación?</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { si: false, etiqueta: 'No' },
-              { si: true, etiqueta: 'Sí' },
-            ].map((op) => (
-              <button
-                key={op.etiqueta}
-                type="button"
-                aria-label={`Financiación: ${op.etiqueta}`}
-                aria-pressed={financia === op.si}
-                onClick={() => setFinancia(op.si)}
-                className={`py-2.5 text-sm font-medium rounded-xl border ${
-                  financia === op.si ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
-                }`}
-              >
-                {op.etiqueta}
-              </button>
-            ))}
-          </div>
+          <Opciones
+            etiqueta="¿Hay financiación?"
+            columnas={2}
+            opciones={[
+              { id: 'no', nombre: 'No', ariaLabel: 'Financiación: No' },
+              { id: 'si', nombre: 'Sí', ariaLabel: 'Financiación: Sí' },
+            ]}
+            seleccionada={financia ? 'si' : 'no'}
+            onElegir={(id) => setFinancia(id === 'si')}
+          />
 
           {financia && (
             <div className="space-y-3">
               <div>
                 <label htmlFor="fin-monto" className="block text-xs text-gray-700 mb-1">Monto financiado ($)</label>
-                <input id="fin-monto" aria-label="Monto financiado ($)" type="text" inputMode="numeric" value={montoFinanciado}
-                  onChange={(e) => setMontoFinanciado(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                <InputMonto
+                  id="fin-monto"
+                  aria-label="Monto financiado ($)"
+                  valor={montoFinanciado === '' ? null : parseMoneyInput(montoFinanciado)}
+                  onChange={(n) => setMontoFinanciado(n === null ? '' : String(n))}
+                />
               </div>
               <div>
                 <span className="block text-xs text-gray-700 mb-1">Cantidad de cuotas</span>
@@ -445,20 +418,20 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
                   ))}
                   <input aria-label="Cantidad de cuotas" type="text" inputMode="numeric" value={cantidadCuotasTxt}
                     onChange={(e) => setCantidadCuotasTxt(e.target.value.replace(/\D/g, ''))}
-                    className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                    className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-base" />
                 </div>
               </div>
               <div>
                 <label htmlFor="fin-fecha" className="block text-xs text-gray-700 mb-1">Fecha de la primera cuota</label>
                 <input id="fin-fecha" aria-label="Fecha de la primera cuota" type="date" value={fechaPrimera}
                   onChange={(e) => setFechaPrimera(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
               </div>
               <div>
                 <label htmlFor="fin-telefono" className="block text-xs text-gray-700 mb-1">Teléfono del comprador (opcional)</label>
                 <input id="fin-telefono" aria-label="Teléfono del comprador (opcional)" type="text" value={telefonoComprador}
                   onChange={(e) => setTelefonoComprador(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
               </div>
               {cuotasPreview.length > 0 && (
                 <ul aria-label="Cuotas" className="text-sm text-gray-800 space-y-1">
@@ -496,14 +469,14 @@ export const VenderVehiculoView: React.FC<VenderVehiculoViewProps> = ({
             </p>
           )}
 
-          <button
-            type="button"
-            disabled={!puedeConfirmar || guardando}
+          <Boton
+            anchoCompleto
+            disabled={!puedeConfirmar}
+            guardando={guardando}
             onClick={() => void confirmar()}
-            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium text-sm rounded-xl shadow-sm"
           >
-            {guardando ? 'Guardando…' : 'Confirmar'}
-          </button>
+            Confirmar
+          </Boton>
         </section>
       ) : (
         <>

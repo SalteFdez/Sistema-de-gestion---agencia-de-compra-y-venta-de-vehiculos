@@ -40,7 +40,7 @@ describe('RegistrarGastoView: Guardando…', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Sin conexión');
     expect(screen.getByRole('button', { name: /^confirmar$/i })).toBeEnabled();
-    expect(screen.getByLabelText(/monto/i)).toHaveValue('100000');
+    expect(screen.getByLabelText(/monto/i)).toHaveValue('$ 100.000');
   });
 
   it('ingreso: mientras guarda, Confirmar queda deshabilitado con "Guardando…"', () => {

@@ -15,7 +15,7 @@ describe('formatMoney', () => {
   });
 
   it('formatea montos negativos con signo menos', () => {
-    expect(formatMoney(-50000)).toBe('$ -50.000');
+    expect(formatMoney(-50000)).toBe('$ −50.000');
   });
 
   it('maneja valores nulos, indefinidos o NaN devolviendo "$ 0"', () => {

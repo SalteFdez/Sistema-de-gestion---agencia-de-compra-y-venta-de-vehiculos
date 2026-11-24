@@ -57,7 +57,8 @@ Sistema de gestión interna para una agencia de compra y venta de vehículos usa
 
 1. **UX-01 · Base de estilos real** — Como socio, quiero que todas las pantallas se vean como fueron diseñadas (botones legibles, sin selectores de archivo sueltos, fotos y grillas en su lugar), para poder usar la app sin adivinar. Instalar Tailwind v4 en lugar del CSS copiado a mano; sacar el bloqueo de zoom. Ver auditoría §1.1.
 2. **UX-02 · Arreglos de comportamiento** — Como socio, quiero que un doble toque no registre dos veces, que "Ver vehículos" funcione después de comprar y ver qué cuenta o socio elegí al mover plata, para no cargar errores. Ver auditoría §1.2. Requiere: UX-01
-3. **UX-03 · Componentes base** — Encabezado, botones, input de monto con miles, opciones, diálogo, badge de estado, cargando/error. Ver §2.3–2.4, §3. Requiere: UX-01
+3. **UX-03a · Componentes base (Comprar, Vender, Gasto)** — Crear encabezado, botones, input de monto con miles, opciones, diálogo, badge de estado, cargando/error y el color de marca; usarlos en las tres pantallas de carga. Ver §2.3–2.4, §3. Requiere: UX-02
+   - **UX-03b · Componentes base (resto de pantallas)** — Llevar los mismos componentes al resto de la app. Requiere: UX-03a
 4. **UX-04 · Inicio nuevo y navegación** — Tarjeta de plata y avisos, 4 acciones principales, barra inferior, atrás del celular. Ver §2.1–2.2. Requiere: UX-03
 5. **UX-05 · Formularios de carga** — Orden de Gasto, Confirmar al final, "Cargar otro", Vender con ganancia estimada y revisión. Ver §2.3. Requiere: UX-03
 6. **UX-06 · Detalle del vehículo** — Números clave arriba, acciones, secciones, Anular al final. Ver §3. Requiere: UX-03

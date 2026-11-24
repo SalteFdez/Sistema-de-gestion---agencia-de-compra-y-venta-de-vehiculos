@@ -8,6 +8,10 @@ import {
   type RegistrarCompraResult,
 } from '../lib/vehiculos/vehiculos-service';
 import { RepartoCuentas, type FilaReparto } from './RepartoCuentas';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { InputMonto } from './ui/InputMonto';
+import { Dialogo } from './ui/Dialogo';
 
 export interface CompraVehiculoViewProps {
   cuentas: CuentaItem[];
@@ -17,9 +21,6 @@ export interface CompraVehiculoViewProps {
   onVerVehiculos?: () => void;
   comprimirFoto?: (foto: Blob) => Promise<Blob>;
 }
-
-// Saldo negativo con el signo menos típico: "$ −500.000"
-const formatoNegativo = (n: number): string => `$ −${formatMoney(Math.abs(n)).replace('$ ', '')}`;
 
 export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
   cuentas,
@@ -41,11 +42,11 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
   const [guardando, setGuardando] = useState<boolean>(false);
   const [modelo, setModelo] = useState<string>('');
   const [anio, setAnio] = useState<string>('');
-  const [precio, setPrecio] = useState<string>('');
+  const [precio, setPrecio] = useState<number | null>(null);
   // Reparto entre cuentas: lo mantiene el componente RepartoCuentas
   const [pagos, setPagos] = useState<FilaReparto[]>([]);
 
-  const precioNumero = parseMoneyInput(precio);
+  const precioNumero = precio ?? 0;
   const sumaPagos = pagos.reduce((acc, f) => acc + parseMoneyInput(f.monto), 0);
   const diferencia = precioNumero - sumaPagos;
   const anioNumero = parseInt(anio, 10);
@@ -124,20 +125,12 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
           </div>
           <p className="text-sm text-gray-700 mt-4">{confirmacion.resumen}</p>
           <div className="flex flex-col gap-2 mt-6">
-            <button
-              type="button"
-              onClick={onVerVehiculos}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-xl shadow-sm"
-            >
+            <Boton anchoCompleto onClick={onVerVehiculos}>
               Ver vehículos
-            </button>
-            <button
-              type="button"
-              onClick={onVolver}
-              className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium text-sm rounded-xl"
-            >
+            </Boton>
+            <Boton anchoCompleto variante="secundario" onClick={onVolver}>
               Volver al inicio
-            </button>
+            </Boton>
           </div>
         </section>
       </div>
@@ -146,16 +139,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Comprar vehículo</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Comprar vehículo" onVolver={onVolver} />
 
       {cuentas.length === 0 && (
         <div className="bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
@@ -181,7 +165,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               type="text"
               value={marca}
               onChange={(e) => setMarca(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
           <div>
@@ -191,7 +175,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               type="text"
               value={modelo}
               onChange={(e) => setModelo(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
           <div>
@@ -202,7 +186,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               inputMode="numeric"
               value={anio}
               onChange={(e) => setAnio(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
 
@@ -213,7 +197,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               type="text"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
           <div>
@@ -223,7 +207,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               type="text"
               value={patente}
               onChange={(e) => setPatente(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
           <div>
@@ -233,7 +217,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
               type="text"
               value={vendedor}
               onChange={(e) => setVendedor(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base"
             />
           </div>
           <div>
@@ -252,14 +236,7 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
             <label htmlFor="compra-precio" className="block text-xs font-semibold text-gray-700 mb-1">
               Precio de compra ($)
             </label>
-            <input
-              id="compra-precio"
-              type="text"
-              inputMode="numeric"
-              value={precio}
-              onChange={(e) => setPrecio(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            />
+            <InputMonto id="compra-precio" valor={precio} onChange={setPrecio} />
           </div>
 
           <h2 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">¿De dónde salió la plata?</h2>
@@ -275,40 +252,24 @@ export const CompraVehiculoView: React.FC<CompraVehiculoViewProps> = ({
             </p>
           )}
 
-          <button
-            type="button"
-            disabled={!puedeConfirmar || guardando}
-            onClick={intentarConfirmar}
-            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium text-sm rounded-xl shadow-sm"
-          >
-            {guardando ? 'Guardando…' : 'Confirmar'}
-          </button>
+          <Boton anchoCompleto disabled={!puedeConfirmar} guardando={guardando} onClick={intentarConfirmar}>
+            Confirmar
+          </Boton>
 
           {avisoNegativo && (
-            <div role="dialog" aria-modal="true" className="bg-amber-50 border border-amber-300 rounded-xl p-4 space-y-3">
+            <Dialogo titulo="Saldo negativo" onCerrar={() => setAvisoNegativo(null)} guardando={guardando}>
               {avisoNegativo.map((c) => (
-                <p key={c.nombre} className="text-sm text-amber-900">
-                  La cuenta {c.nombre} va a quedar en {formatoNegativo(c.saldoResultante)}
+                <p key={c.nombre} className="text-sm text-gray-900">
+                  La cuenta {c.nombre} va a quedar en {formatMoney(c.saldoResultante)}
                 </p>
               ))}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAvisoNegativo(null)}
-                  className="flex-1 py-2 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg"
-                >
-                  Volver
-                </button>
-                <button
-                  type="button"
-                  disabled={guardando}
-                  onClick={() => void registrar()}
-                  className="flex-1 py-2 bg-amber-600 disabled:opacity-50 text-white text-sm rounded-lg"
-                >
-                  {guardando ? 'Guardando…' : 'Confirmar igual'}
-                </button>
-              </div>
-            </div>
+              <Boton anchoCompleto variante="peligro" guardando={guardando} onClick={() => void registrar()}>
+                Confirmar igual
+              </Boton>
+              <Boton anchoCompleto variante="secundario" onClick={() => setAvisoNegativo(null)}>
+                Volver
+              </Boton>
+            </Dialogo>
           )}
         </section>
       )}

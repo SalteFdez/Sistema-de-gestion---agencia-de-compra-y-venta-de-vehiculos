@@ -2,11 +2,17 @@ import React from 'react';
 import type { MesGanancia } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
 import { leyendaSinAsignar } from '../lib/reportes/ganancia';
+import { Encabezado } from './ui/Encabezado';
+import { Cargando } from './ui/Cargando';
+import { ErrorReintentar } from './ui/ErrorReintentar';
 
 export interface GananciaMensualViewProps {
   meses: MesGanancia[];
   onVerMes: (mes: string) => void;
   onVolver: () => void;
+  cargando?: boolean;
+  errorCarga?: boolean;
+  onReintentar?: () => void;
 }
 
 const NOMBRES_MES = [
@@ -20,25 +26,22 @@ const nombreMes = (mes: string): string => {
   return `${NOMBRES_MES[m - 1]} ${anio}`;
 };
 
-// Pérdida con el signo menos típico de la app: "$ −500.000"
-const formatoGanancia = (n: number): string =>
-  n < 0 ? `$ −${formatMoney(Math.abs(n)).replace('$ ', '')}` : formatMoney(n);
-
-export const GananciaMensualView: React.FC<GananciaMensualViewProps> = ({ meses, onVerMes, onVolver }) => {
+export const GananciaMensualView: React.FC<GananciaMensualViewProps> = ({
+  meses,
+  onVerMes,
+  onVolver,
+  cargando = false,
+  errorCarga = false,
+  onReintentar,
+}) => {
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Ganancia por mes</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Ganancia por mes" onVolver={onVolver} />
 
-      {meses.length === 0 ? (
+      {errorCarga && <ErrorReintentar onReintentar={onReintentar ?? (() => undefined)} />}
+      {cargando && meses.length === 0 && <Cargando />}
+
+      {!errorCarga && !(cargando && meses.length === 0) && (meses.length === 0 ? (
         <p className="text-sm text-gray-600 bg-white border border-dashed border-gray-300 rounded-xl p-6 text-center">
           Todavía no hay ventas ni gastos para mostrar
         </p>
@@ -62,13 +65,13 @@ export const GananciaMensualView: React.FC<GananciaMensualViewProps> = ({ meses,
                 </ul>
                 {leyenda && <p className="text-xs text-amber-700 mt-1">{leyenda}</p>}
                 <p className={`text-2xl font-extrabold mt-3 ${m.ganancia < 0 ? 'text-red-600' : 'text-green-700'}`}>
-                  {formatoGanancia(m.ganancia)}
+                  {formatMoney(m.ganancia)}
                 </p>
               </article>
             );
           })}
         </div>
-      )}
+      ))}
     </div>
   );
 };

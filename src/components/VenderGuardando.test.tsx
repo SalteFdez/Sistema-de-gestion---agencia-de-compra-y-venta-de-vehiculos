@@ -36,6 +36,6 @@ describe('VenderVehiculoView: Guardando…', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Sin conexión');
     expect(screen.getByRole('button', { name: /^confirmar$/i })).toBeEnabled();
-    expect(screen.getByLabelText(/precio de venta/i)).toHaveValue('1500000');
+    expect(screen.getByLabelText(/precio de venta/i)).toHaveValue('$ 1.500.000');
   });
 });

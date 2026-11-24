@@ -25,6 +25,8 @@ import { MovimientoSocioView } from './MovimientoSocioView';
 import type { VehiculosService, VehiculoItem, DetalleVehiculo, MovimientoItem, VistaPreviaAnulacion, PendientesResult, PendienteAsignar, CuotaPorCobrar, MesGanancia, DetalleMesGanancia } from '../lib/vehiculos/vehiculos-service';
 import { TAMANO_PAGINA_MOVIMIENTOS } from '../lib/vehiculos/vehiculos-service';
 import { VehiculoDetalleView } from './VehiculoDetalleView';
+import { Cargando } from './ui/Cargando';
+import { ErrorReintentar } from './ui/ErrorReintentar';
 import type { CuentasService, CuentaItem } from '../lib/cuentas/cuentas-service';
 
 export interface AuthFlowProps {
@@ -64,22 +66,33 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [meses, setMeses] = useState<MesGanancia[]>([]);
   const [mesDetalle, setMesDetalle] = useState<string | null>(null);
   const [detalleMes, setDetalleMes] = useState<DetalleMesGanancia | null>(null);
+  // Cargando / error de cada listado: la pantalla muestra "Cargando…" o "No se pudo cargar · Reintentar"
+  const [cargandoMeses, setCargandoMeses] = useState<boolean>(false);
+  const [errorMeses, setErrorMeses] = useState<boolean>(false);
   const loadGananciaMensual = useCallback(async () => {
     if (!vehiculosService) return;
+    setCargandoMeses(true);
     try {
       setMeses(await vehiculosService.listarGananciaMensual());
+      setErrorMeses(false);
     } catch {
       setMeses([]);
+      setErrorMeses(true);
+    } finally {
+      setCargandoMeses(false);
     }
   }, [vehiculosService]);
+  const [errorDetalleMes, setErrorDetalleMes] = useState<boolean>(false);
   const loadDetalleMes = useCallback(async (mes: string) => {
     if (!vehiculosService) return;
     setMesDetalle(mes);
     setDetalleMes(null);
+    setErrorDetalleMes(false);
     try {
       setDetalleMes(await vehiculosService.detalleMesGanancia(mes));
     } catch {
       setDetalleMes(null);
+      setErrorDetalleMes(true);
     }
   }, [vehiculosService]);
 
@@ -135,6 +148,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
     }
   };
   const [cuentas, setCuentas] = useState<CuentaItem[]>([]);
+  const [cargandoCuentas, setCargandoCuentas] = useState<boolean>(false);
+  const [errorCuentas, setErrorCuentas] = useState<boolean>(false);
   const [totalDisponible, setTotalDisponible] = useState<number>(0);
   const [vehiculos, setVehiculos] = useState<VehiculoItem[]>([]);
   const [inventario, setInventario] = useState<{ total: number; cantidad: number }>({ total: 0, cantidad: 0 });
@@ -149,15 +164,21 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   const [movimientos, setMovimientos] = useState<MovimientoItem[]>([]);
   const [hayMasMovimientos, setHayMasMovimientos] = useState<boolean>(false);
 
+  const [cargandoMovimientos, setCargandoMovimientos] = useState<boolean>(false);
+  const [errorMovimientos, setErrorMovimientos] = useState<boolean>(false);
   const loadMovimientos = useCallback(async (desde: number) => {
     if (!vehiculosService) return;
+    setCargandoMovimientos(true);
     try {
       const lista = await vehiculosService.listarMovimientos(desde);
       setMovimientos(desde === 0 ? lista : (prev) => [...prev, ...lista]);
       // Una página llena (50) indica que puede haber más
       setHayMasMovimientos(lista.length === TAMANO_PAGINA_MOVIMIENTOS);
+      setErrorMovimientos(false);
     } catch {
-      // El error de carga se muestra en la pantalla de movimientos (próximo paso)
+      setErrorMovimientos(true);
+    } finally {
+      setCargandoMovimientos(false);
     }
   }, [vehiculosService]);
 
@@ -183,26 +204,37 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   // Búsqueda del listado: vive acá para sobrevivir a abrir el detalle y volver
   const [busquedaVehiculos, setBusquedaVehiculos] = useState<string>('');
 
+  const [cargandoVehiculos, setCargandoVehiculos] = useState<boolean>(false);
   const loadVehiculosData = useCallback(async () => {
     if (!vehiculosService) return;
+    setCargandoVehiculos(true);
     try {
       const lista = await vehiculosService.listarVehiculos();
       setVehiculos(lista);
       setVehiculosError(false);
     } catch {
       setVehiculosError(true);
+    } finally {
+      setCargandoVehiculos(false);
     }
   }, [vehiculosService]);
 
   // Cuotas con saldo (lista "Cuotas por cobrar", próximas en Balances y contador de vencidas)
   const [cuotas, setCuotas] = useState<CuotaPorCobrar[]>([]);
   const [cuotaCobrar, setCuotaCobrar] = useState<CuotaPorCobrar | null>(null);
+  const [cargandoCuotas, setCargandoCuotas] = useState<boolean>(false);
+  const [errorCuotas, setErrorCuotas] = useState<boolean>(false);
   const loadCuotas = useCallback(async () => {
     if (!vehiculosService) return;
+    setCargandoCuotas(true);
     try {
       setCuotas(await vehiculosService.listarCuotasPorCobrar());
+      setErrorCuotas(false);
     } catch {
       // Sin la lista, el botón no muestra contador
+      setErrorCuotas(true);
+    } finally {
+      setCargandoCuotas(false);
     }
   }, [vehiculosService]);
 
@@ -222,12 +254,19 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   // Gastos pendientes de asignar: el botón de la pantalla principal muestra su total
   const [pendientes, setPendientes] = useState<PendientesResult>({ grupos: [], total: 0 });
   const [gastoAsignar, setGastoAsignar] = useState<PendienteAsignar | null>(null);
+  const [cargandoPendientes, setCargandoPendientes] = useState<boolean>(false);
+  const [errorPendientes, setErrorPendientes] = useState<boolean>(false);
   const loadPendientes = useCallback(async () => {
     if (!vehiculosService) return;
+    setCargandoPendientes(true);
     try {
       setPendientes(await vehiculosService.listarPendientes());
+      setErrorPendientes(false);
     } catch {
       // Sin pendientes cargados, el botón no aparece
+      setErrorPendientes(true);
+    } finally {
+      setCargandoPendientes(false);
     }
   }, [vehiculosService]);
 
@@ -268,6 +307,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
   // Cargar cuentas y saldo disponible si está desbloqueado
   const loadCuentasData = useCallback(async () => {
     if (!cuentasService || !isUnlocked) return;
+    setCargandoCuentas(true);
     try {
       const [list, total] = await Promise.all([
         cuentasService.obtenerCuentasConSaldo(),
@@ -275,6 +315,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
       ]);
       setCuentas(list);
       setTotalDisponible(total);
+      setErrorCuentas(false);
 
       if (vehiculosService) {
         try {
@@ -285,7 +326,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
         }
       }
     } catch {
-      // Ignorar errores transitorios
+      setErrorCuentas(true);
+    } finally {
+      setCargandoCuentas(false);
     }
   }, [cuentasService, vehiculosService, isUnlocked]);
 
@@ -451,6 +494,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <GananciaMensualView
             meses={meses}
+            cargando={cargandoMeses}
+            errorCarga={errorMeses}
+            onReintentar={() => void loadGananciaMensual()}
             onVerMes={(mes) => {
               void loadDetalleMes(mes);
               setCurrentView('ganancia_mes');
@@ -476,7 +522,11 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               onVolver={() => setCurrentView('ganancia_mensual')}
             />
           ) : (
-            <p className="text-sm text-gray-500">Cargando el mes…</p>
+            errorDetalleMes ? (
+              <ErrorReintentar onReintentar={() => { if (mesDetalle) void loadDetalleMes(mesDetalle); }} />
+            ) : (
+              <Cargando />
+            )
           )}
         </main>
       );
@@ -487,6 +537,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <CuotasPorCobrarView
             cuotas={cuotas}
+            cargando={cargandoCuotas}
+            errorCarga={errorCuotas}
+            onReintentar={() => void loadCuotas()}
             onCobrar={(cuota) => {
               setCuotaCobrar(cuota);
               setCurrentView('cobrar_cuota');
@@ -525,6 +578,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <PendientesAsignarView
             pendientes={pendientes}
+            cargando={cargandoPendientes}
+            errorCarga={errorPendientes}
+            onReintentar={() => void loadPendientes()}
             onAsignar={(gasto) => {
               setGastoAsignar(gasto);
               setCurrentView('asignar_gasto');
@@ -628,6 +684,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           <MovimientosView
             movimientos={movimientos}
             hayMas={hayMasMovimientos}
+            cargando={cargandoMovimientos}
+            errorCarga={errorMovimientos}
+            onReintentar={() => void loadMovimientos(0)}
             onVerMas={() => void loadMovimientos(movimientos.length)}
             onAnular={
               vehiculosService
@@ -885,18 +944,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
               </button>
             </header>
             {detalleError ? (
-              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-                <p className="text-sm text-red-700 mb-3">No se pudo cargar el detalle del vehículo.</p>
-                <button
-                  type="button"
-                  onClick={() => idDetalle && void abrirDetalle(idDetalle)}
-                  className="py-2 px-4 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
-                >
-                  Reintentar
-                </button>
-              </div>
+              <ErrorReintentar
+                onReintentar={() => {
+                  if (idDetalle) void abrirDetalle(idDetalle);
+                }}
+              />
             ) : (
-              <p className="text-sm text-gray-500">Cargando el detalle…</p>
+              <Cargando />
             )}
           </div>
         </main>
@@ -909,6 +963,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
           <VehiculosView
             vehiculos={vehiculos}
             errorCarga={vehiculosError}
+            cargando={cargandoVehiculos}
             filtro={filtroVehiculos}
             busqueda={busquedaVehiculos}
             onCambiarBusqueda={setBusquedaVehiculos}
@@ -949,6 +1004,9 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({
         <main className="min-h-screen bg-gray-50 flex flex-col items-center p-4">
           <BalancesView
             porCobrar={porCobrar}
+            cargandoCuentas={cargandoCuentas && cuentas.length === 0}
+            errorCuentas={errorCuentas}
+            onReintentar={() => void loadCuentasData()}
             errorPorCobrar={errorPorCobrar}
             proximasCuotas={cuotas}
             onVerGananciaMensual={() => {

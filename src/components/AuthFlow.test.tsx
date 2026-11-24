@@ -743,7 +743,7 @@ describe('AuthFlow UI Integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
 
-    expect(await screen.findByText(/no se pudieron cargar los vehículos/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no se pudo cargar/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
 
     expect(await screen.findByText('MC-020')).toBeInTheDocument();
@@ -1089,7 +1089,7 @@ describe('AuthFlow UI Integration', () => {
     fireEvent.click(screen.getByRole('button', { name: /vehículos/i }));
     fireEvent.click(await screen.findByText('MC-023'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo cargar el detalle/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo cargar/i);
     fireEvent.click(screen.getByRole('button', { name: /reintentar/i }));
 
     expect(await screen.findByText('Cómo se pagó')).toBeInTheDocument();

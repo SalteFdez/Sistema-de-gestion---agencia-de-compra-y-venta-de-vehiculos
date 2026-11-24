@@ -1,11 +1,21 @@
 import React, { useState } from 'react';
 import type { MovimientoItem } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
+import { Dialogo } from './ui/Dialogo';
+import { Cargando } from './ui/Cargando';
+import { ErrorReintentar } from './ui/ErrorReintentar';
 
 export interface MovimientosViewProps {
   movimientos: MovimientoItem[];
   /** Puede haber más movimientos para traer (se muestra "Ver más") */
   hayMas?: boolean;
+  /** Mientras llega el historial: "Cargando…" en vez de una lista vacía */
+  cargando?: boolean;
+  /** Si falla la carga: "No se pudo cargar" con Reintentar */
+  errorCarga?: boolean;
+  onReintentar?: () => void;
   onVerMas?: () => void;
   /** Anular un movimiento que se puede anular (saldo inicial, ingreso o gasto), con su motivo */
   onAnular?: (
@@ -80,6 +90,9 @@ const formatoFecha = (iso: string): string => {
 export const MovimientosView: React.FC<MovimientosViewProps> = ({
   movimientos,
   hayMas = false,
+  cargando = false,
+  errorCarga = false,
+  onReintentar,
   onVerMas,
   onAnular,
   onVerVehiculo,
@@ -119,16 +132,10 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
   };
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Movimientos</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Movimientos" onVolver={onVolver} />
+
+      {errorCarga && <ErrorReintentar onReintentar={onReintentar ?? (() => undefined)} />}
+      {cargando && movimientos.length === 0 && <Cargando />}
 
       <ul className="space-y-2">
         {movimientos.map((m) => {
@@ -169,22 +176,18 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
               {seleccionadoId === m.id && !m.anulado && (
                 <div className="mt-3 pt-3 border-t border-gray-200 no-underline" onClick={(e) => e.stopPropagation()}>
                   {m.tipo === 'compra' || m.tipo === 'venta_cobro' ? (
-                    <button
-                      type="button"
+                    <Boton
+                      anchoCompleto
+                      variante="secundario"
                       disabled={!m.vehiculoId}
                       onClick={() => m.vehiculoId && onVerVehiculo?.(m.vehiculoId)}
-                      className="w-full py-2 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg"
                     >
                       Ver vehículo
-                    </button>
+                    </Boton>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => abrirAnular(m)}
-                      className="w-full py-2 bg-white border border-red-300 text-red-700 text-sm font-medium rounded-lg"
-                    >
+                    <Boton anchoCompleto variante="peligro" onClick={() => abrirAnular(m)}>
                       Anular
-                    </button>
+                    </Boton>
                   )}
                 </div>
               )}
@@ -194,12 +197,12 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
       </ul>
 
       {aAnular && (
-        <div role="dialog" aria-modal="true" className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
-          <p className="text-sm text-red-900">
+        <Dialogo titulo="¿Seguro?" onCerrar={() => setAAnular(null)} guardando={guardando}>
+          <p className="text-sm text-gray-900">
             Vas a anular {textoAnulacion(aAnular)}. ¿Seguro?
           </p>
           {afectados && afectados.length > 0 && (
-            <p className="text-sm text-red-900">
+            <p className="text-sm text-gray-900">
               Baja el costo de{' '}
               {afectados.map((a, i) => `${i > 0 ? 'de ' : ''}${a.codigo} en ${formatMoney(a.monto)}`).join(' y ')}
             </p>
@@ -213,42 +216,33 @@ export const MovimientosView: React.FC<MovimientosViewProps> = ({
               type="text"
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base bg-white"
             />
           </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setAAnular(null)}
-              className="flex-1 py-2 bg-white border border-gray-300 text-gray-800 text-sm rounded-lg"
-            >
-              Volver
-            </button>
-            <button
-              type="button"
-              disabled={motivo.trim() === '' || guardando}
-              onClick={() => void confirmarAnulacion()}
-              className="flex-1 py-2 bg-red-600 disabled:bg-gray-300 text-white text-sm rounded-lg"
-            >
-              {guardando ? 'Guardando…' : 'Anular movimiento'}
-            </button>
-          </div>
+          <Boton anchoCompleto variante="secundario" onClick={() => setAAnular(null)}>
+            Volver
+          </Boton>
+          <Boton
+            anchoCompleto
+            variante="peligro"
+            disabled={motivo.trim() === ''}
+            guardando={guardando}
+            onClick={() => void confirmarAnulacion()}
+          >
+            Anular movimiento
+          </Boton>
           {errorAnular && (
             <p role="alert" className="text-sm text-red-700">
               {errorAnular}
             </p>
           )}
-        </div>
+        </Dialogo>
       )}
 
       {hayMas && (
-        <button
-          type="button"
-          onClick={onVerMas}
-          className="w-full mt-4 py-2.5 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-xl"
-        >
+        <Boton anchoCompleto variante="secundario" onClick={onVerMas}>
           Ver más
-        </button>
+        </Boton>
       )}
     </div>
   );

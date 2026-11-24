@@ -1,6 +1,8 @@
 import React from 'react';
 import type { DetalleMesGanancia } from '../lib/vehiculos/vehiculos-service';
 import { formatMoney } from '../lib/format/money';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
 
 export interface GananciaDetalleMesViewProps {
   mes: string;
@@ -47,16 +49,7 @@ export const GananciaDetalleMesView: React.FC<GananciaDetalleMesViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">{titulo}</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo={titulo} onVolver={onVolver} />
 
       <Seccion titulo="Ventas" total={totalVentas}>
         <ul className="space-y-2">
@@ -102,13 +95,9 @@ export const GananciaDetalleMesView: React.FC<GananciaDetalleMesViewProps> = ({
           ))}
         </ul>
         {detalle.gastosSinAsignar.length > 0 && (
-          <button
-            type="button"
-            onClick={onIrPendientes}
-            className="w-full mt-3 py-2 bg-white border border-gray-300 text-gray-800 text-sm font-medium rounded-lg"
-          >
+            <Boton anchoCompleto variante="secundario" onClick={onIrPendientes}>
             Ver pendientes de asignar
-          </button>
+          </Boton>
         )}
       </Seccion>
 

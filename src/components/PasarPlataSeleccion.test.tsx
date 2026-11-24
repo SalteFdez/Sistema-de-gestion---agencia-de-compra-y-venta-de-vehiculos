@@ -13,16 +13,17 @@ describe('PasarPlataView: selección y saldo', () => {
     render(<PasarPlataView cuentas={cuentas} onRegistrar={vi.fn()} onVolver={vi.fn()} />);
 
     const desde = within(screen.getByRole('group', { name: 'Desde' }));
-    expect(desde.getByRole('button', { name: /caja efectivo/i })).toHaveTextContent('Caja efectivo · $ 3.000.000');
-    expect(desde.getByRole('button', { name: /banco/i })).toHaveTextContent('Banco · $ 1.500.000');
+    expect(desde.getByRole('button', { name: /caja efectivo/i })).toHaveTextContent('Caja efectivo');
+    expect(desde.getByRole('button', { name: /caja efectivo/i })).toHaveTextContent('$ 3.000.000');
+    expect(desde.getByRole('button', { name: /banco/i })).toHaveTextContent('$ 1.500.000');
 
     fireEvent.click(desde.getByRole('button', { name: /caja efectivo/i }));
     expect(desde.getByRole('button', { name: /caja efectivo/i })).toHaveAttribute('aria-pressed', 'true');
-    expect(desde.getByRole('button', { name: /caja efectivo/i })).toHaveClass('bg-blue-600', 'text-white');
+    expect(desde.getByRole('button', { name: /caja efectivo/i })).toHaveClass('bg-marca', 'text-white');
 
     const hacia = within(screen.getByRole('group', { name: 'Hacia' }));
     fireEvent.click(hacia.getByRole('button', { name: /banco/i }));
     expect(hacia.getByRole('button', { name: /banco/i })).toHaveAttribute('aria-pressed', 'true');
-    expect(hacia.getByRole('button', { name: /banco/i })).toHaveClass('bg-blue-600', 'text-white');
+    expect(hacia.getByRole('button', { name: /banco/i })).toHaveClass('bg-marca', 'text-white');
   });
 });

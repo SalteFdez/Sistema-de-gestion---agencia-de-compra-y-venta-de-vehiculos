@@ -17,7 +17,8 @@ export function formatMoney(amount: number | bigint | null | undefined): string 
   const abs = Math.abs(Math.round(num));
   const formatted = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-  return isNegative ? `$ -${formatted}` : `$ ${formatted}`;
+  // Signo menos tipográfico (U+2212), no el guion
+  return isNegative ? `$ −${formatted}` : `$ ${formatted}`;
 }
 
 /**

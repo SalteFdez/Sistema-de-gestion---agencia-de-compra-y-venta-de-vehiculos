@@ -41,7 +41,7 @@ describe('CobrarCuotaView: Guardando…', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Sin conexión');
     expect(screen.getByRole('button', { name: /confirmar cobro/i })).toBeEnabled();
-    expect(screen.getByLabelText(/monto a cobrar/i)).toHaveValue('200000');
+    expect(screen.getByLabelText(/monto a cobrar/i)).toHaveValue('$ 200.000');
   });
 });
 

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import type { PendienteAsignar, VehiculoItem, AsignarGastoResult } from '../lib/vehiculos/vehiculos-service';
 import { FilasVehiculoMonto, type FilaVehiculo } from './FilasVehiculoMonto';
 import { formatMoney } from '../lib/format/money';
+import { Encabezado } from './ui/Encabezado';
+import { Boton } from './ui/Boton';
 
 export interface AsignarGastoViewProps {
   gasto: PendienteAsignar;
@@ -55,16 +57,7 @@ export const AsignarGastoView: React.FC<AsignarGastoViewProps> = ({ gasto, vehic
 
   return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col min-h-screen">
-      <header className="flex justify-between items-center py-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Asignar gasto</h1>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2.5 py-1"
-        >
-          Volver
-        </button>
-      </header>
+      <Encabezado titulo="Asignar gasto" onVolver={onVolver} />
 
       <section className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-4">
         <div>
@@ -92,14 +85,9 @@ export const AsignarGastoView: React.FC<AsignarGastoViewProps> = ({ gasto, vehic
           </p>
         )}
 
-        <button
-          type="button"
-          disabled={!valido || guardando}
-          onClick={() => void confirmar()}
-          className="w-full py-2.5 bg-blue-600 disabled:bg-gray-300 text-white text-sm font-semibold rounded-xl"
-        >
-          {guardando ? 'Guardando…' : 'Confirmar asignación'}
-        </button>
+        <Boton anchoCompleto disabled={!valido} guardando={guardando} onClick={() => void confirmar()}>
+          Confirmar asignación
+        </Boton>
       </section>
     </div>
   );

@@ -48,7 +48,7 @@ describe('VenderVehiculoView: permutas', () => {
     fireEvent.change(screen.getByLabelText('Año'), { target: { value: '2015' } });
     fireEvent.change(screen.getByLabelText('Valor pactado ($)'), { target: { value: '1000000' } });
 
-    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('7000000');
+    expect(screen.getByLabelText('Monto pago 1')).toHaveValue('$ 7.000.000');
   });
 
   it('muestra la ecuación en vivo: precio = permutas + cobrado, con lo que falta o sobra', () => {

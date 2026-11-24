@@ -19,7 +19,7 @@ describe('CobrarCuotaView', () => {
   it('el monto viene precargado con lo que falta de la cuota', () => {
     render(<CobrarCuotaView cuota={cuota} cuentas={cuentas} onCobrar={vi.fn()} onVolver={vi.fn()} />);
 
-    expect(screen.getByLabelText('Monto a cobrar ($)')).toHaveValue('500000');
+    expect(screen.getByLabelText('Monto a cobrar ($)')).toHaveValue('$ 500.000');
   });
 
   it('se puede bajar el monto para un cobro parcial, y se elige la cuenta donde entró', () => {
@@ -66,6 +66,6 @@ describe('CobrarCuotaView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar cobro' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo confirmar/i);
-    expect(screen.getByLabelText('Monto a cobrar ($)')).toHaveValue('500000');
+    expect(screen.getByLabelText('Monto a cobrar ($)')).toHaveValue('$ 500.000');
   });
 });
