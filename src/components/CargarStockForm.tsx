@@ -111,7 +111,7 @@ export const CargarStockForm: React.FC<CargarStockFormProps> = ({
         <label htmlFor="stock-foto" className="block text-xs font-semibold text-gray-700 mb-1">
           Foto (opcional)
         </label>
-        <input id="stock-foto" name="foto" type="file" accept="image/*" capture="environment" className="w-full text-sm" />
+        <input id="stock-foto" name="foto" type="file" accept="image/*" className="w-full text-sm" />
       </div>
       {error && (
         <p role="alert" className="text-sm text-red-600">
